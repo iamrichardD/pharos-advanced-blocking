@@ -40,14 +40,16 @@ nfpms:
 
 # Sign the checksums file using Cosign (keyless signing using OIDC)
 signs:
-  - artifacts: checksum
+  - id: pab-signing
+    artifacts: checksum
     cmd: cosign
+    signature: "${artifact}.sigstore.json"
     args:
       - sign-blob
       - "--yes"
-      - "--bundle=${signature}bundle"
+      - "--bundle=${signature}"
       - "${artifact}"
-    output: true
+
 
 # Checksums generation configuration
 checksum:
