@@ -2,9 +2,10 @@ name: CI
 
 on:
   push:
-    branches-ignore:
+    branches:
       - main
   pull_request:
+
 
 jobs:
   build-and-test:
