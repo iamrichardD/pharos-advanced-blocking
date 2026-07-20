@@ -1,0 +1,35 @@
+---
+layout: ../layouts/Layout.astro
+title: "Installation | Pharos Advanced Blocking"
+---
+# Installation
+
+Pharos Advanced Blocking (pab) is a lightweight, compiled binary designed to integrate safely with your existing Technitium host.
+
+Installing Pharos Advanced Blocking (`pab`) is designed to be straightforward across different Linux environments.
+
+## Quick Install Script
+
+The fastest way to get started is by using our installation script:
+
+```bash
+curl -sSL https://iamrichardd.com/pharos-advanced-blocking/install.sh | bash
+```
+
+## Debian/Ubuntu (.deb)
+
+If you prefer to manage the installation via `apt` or `dpkg`, you can download and install the Debian package directly.
+
+```bash
+wget https://iamrichardd.com/pharos-advanced-blocking/releases/latest/pab_amd64.deb
+sudo dpkg -i pab_amd64.deb
+sudo apt-get install -f # To resolve any missing dependencies
+```
+
+## Post-Installation
+
+After installation, the `pab` command will be available in your path. Verify the installation by running:
+
+```bash
+pab --version
+```

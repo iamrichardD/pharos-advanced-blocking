@@ -1,0 +1,70 @@
+version: 2
+
+# Build configuration for GoReleaser
+builds:
+  - id: pab
+    main: ./cmd/pab/main.go
+    binary: pab
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+    goarch:
+      - amd64
+      - arm64
+    # Set linker flags for version information
+    ldflags:
+      - -s -w -X main.Version={{.Version}} -X main.Commit={{.Commit}} -X main.Date={{.Date}}
+
+# Archive configuration for standard binaries
+archives:
+  - id: pab-archive
+    # Use standard archive names: e.g. pab_1.0.0_linux_amd64.tar.gz
+    name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    files:
+      - README.md
+      - docs/*
+      - LICENSE*
+
+# nfpm configuration to build debian (.deb) packages
+nfpms:
+  - id: pab-nfpms
+    package_name: pab
+    file_name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    homepage: https://github.com/pharos-advanced-blocking/pab
+    maintainer: Pharos Advanced Blocking Team
+    description: Advanced Blocking application.
+    license: MIT
+    formats:
+      - deb
+    contents:
+      - src: ./docs
+        dst: /usr/share/doc/pab
+        type: tree
+
+# Sign the checksums file using Cosign (keyless signing using OIDC)
+signs:
+  - artifacts: checksum
+    cmd: cosign
+    args:
+      - sign-blob
+      - "--yes"
+      - "--bundle=${signature}bundle"
+      - "${artifact}"
+    output: true
+
+# Checksums generation configuration
+checksum:
+  name_template: "checksums.txt"
+
+# Snapshot build config
+snapshot:
+  version_template: "{{ incpatch .Version }}-next"
+
+# Changelog generation config
+changelog:
+  sort: asc
+  filters:
+    exclude:
+      - '^docs:'
+      - '^test:'

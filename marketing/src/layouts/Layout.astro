@@ -1,0 +1,55 @@
+---
+import '../styles/global.css';
+
+interface Props {
+  title?: string;
+  frontmatter?: {
+    title?: string;
+  };
+}
+
+const { title, frontmatter } = Astro.props;
+const pageTitle = title || frontmatter?.title || 'Pharos Advanced Blocking';
+const isProse = !!frontmatter;
+const baseUrl = import.meta.env.BASE_URL.replace(/\/$/, '');
+---
+
+<!DOCTYPE html>
+<html lang="en" class="dark">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="description" content="Pharos Advanced Blocking - Next-generation DNS and IP blocking" />
+    <meta name="viewport" content="width=device-width" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <meta name="generator" content={Astro.generator} />
+    <title>{pageTitle}</title>
+  </head>
+
+  <body class="min-h-screen flex flex-col">
+    <nav class="border-b border-secondary-200 dark:border-secondary-800 bg-white/80 dark:bg-secondary-900/80 backdrop-blur-md sticky top-0 z-50">
+      <div class="container-custom py-4 flex items-center justify-between">
+        <a href={`${baseUrl}/`} class="font-bold text-2xl tracking-tight text-secondary-900 dark:text-white">
+          Pharos<span class="text-primary-500">AB</span>
+        </a>
+        <div class="flex gap-6 items-center">
+          <a href={`${baseUrl}/user-guide/`} class="font-medium hover:text-primary-500">User Guide</a>
+          <a href={`${baseUrl}/installation/`} class="font-medium hover:text-primary-500">Installation</a>
+          <a href={`${baseUrl}/cli-reference/`} class="font-medium hover:text-primary-500">CLI Reference</a>
+          <a href="https://github.com/iamrichardd/pharos-advanced-blocking" class="btn btn-primary">GitHub</a>
+        </div>
+      </div>
+    </nav>
+    <main class="flex-grow">
+      {isProse ? (
+        <article class="container-custom py-12 max-w-4xl mx-auto prose dark:prose-invert">
+          <slot />
+        </article>
+      ) : (
+        <slot />
+      )}
+    </main>
+    <footer class="py-8 border-t border-secondary-200 dark:border-secondary-800 mt-auto text-center text-sm text-secondary-500">
+      &copy; {new Date().getFullYear()} <a href="https://iamrichardd.com" class="hover:text-primary-500 underline decoration-dotted">iamrichardd.com</a>. All rights reserved.
+    </footer>
+  </body>
+</html>

@@ -1,0 +1,12 @@
+# Binaries
+/dist/
+/pab
+/marketing/dist/
+/marketing/node_modules/
+/marketing/.astro/
+/marketing/package-lock.json
+
+# Local configurations
+*.log
+/etc/pab/
+/secrets.json

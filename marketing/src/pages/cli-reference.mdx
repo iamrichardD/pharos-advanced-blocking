@@ -1,0 +1,49 @@
+---
+layout: ../layouts/Layout.astro
+title: "CLI Reference | Pharos Advanced Blocking"
+---
+# CLI Reference
+
+The `pab` CLI provides a robust interface for managing your advanced blocking configurations.
+
+## Global Flags
+
+- `--config, -c <path>`: Path to custom configuration file (default: `/etc/pab/config.yaml`)
+- `--verbose, -v`: Enable verbose logging output
+- `--dry-run`: Validate configuration without applying changes
+
+## Commands
+
+### `pab start`
+
+Starts the Pharos Advanced Blocking engine and the Bubble Tea TUI dashboard.
+
+```bash
+pab start --watch
+```
+
+### `pab reload`
+
+Hot-reloads your dnsApp.config and blocklists without dropping active DNS queries.
+
+```bash
+pab reload
+```
+
+### `pab validate`
+
+Runs a strict validation engine against your dnsApp.config to prevent malformed JSON from breaking your DNS server.
+
+```bash
+pab validate --strict
+```
+
+### `pab client`
+
+Manage DNS blocking client IP configurations.
+
+```bash
+pab client add 192.168.1.100 --policy strict
+pab client list
+pab client remove 192.168.1.100
+```

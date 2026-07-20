@@ -1,0 +1,67 @@
+---
+import Layout from '../layouts/Layout.astro';
+const baseUrl = import.meta.env.BASE_URL.replace(/\/$/, '');
+---
+
+<Layout title="Pharos Advanced Blocking">
+  <section class="section container-custom flex flex-col items-center text-center">
+    <h1 class="max-w-4xl mb-6">
+      Stop wrestling with JSON. Master Technitium Advanced Blocking.
+    </h1>
+    
+    <p class="text-lg md:text-xl text-secondary-600 dark:text-secondary-400 max-w-2xl mb-10">
+      Manually editing dnsApp.config is brittle and stressful. Pharos Advanced Blocking (pab) gives you a bulletproof CLI and dynamic TUI console to manage your Technitium DNS blocking policies with total confidence.
+    </p>
+    
+    <div class="flex flex-col sm:flex-row gap-4 w-full justify-center">
+      <a href={`${baseUrl}/installation/`} class="btn btn-primary px-8 py-4 text-base">
+        Install the CLI
+      </a>
+      <a href={`${baseUrl}/user-guide/`} class="btn btn-secondary px-8 py-4 text-base">
+        Read the Docs
+      </a>
+    </div>
+  </section>
+
+  <section class="section-sm bg-secondary-50 dark:bg-secondary-800/50 border-y border-secondary-200 dark:border-secondary-800">
+    <div class="container-custom">
+      <div class="grid md:grid-cols-3 gap-8">
+        <div class="card p-6">
+          <div class="w-12 h-12 rounded-lg bg-primary-100 dark:bg-primary-900/50 flex items-center justify-center text-primary-600 dark:text-primary-400 mb-4">
+            <svg class="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+            </svg>
+          </div>
+          <h3 class="text-xl mb-2">Bulletproof Configs</h3>
+          <p class="text-secondary-600 dark:text-secondary-400">
+            No more broken JSON files bringing down your DNS. Built-in strict validation catches errors before they apply.
+          </p>
+        </div>
+        
+        <div class="card p-6">
+          <div class="w-12 h-12 rounded-lg bg-primary-100 dark:bg-primary-900/50 flex items-center justify-center text-primary-600 dark:text-primary-400 mb-4">
+            <svg class="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+            </svg>
+          </div>
+          <h3 class="text-xl mb-2">Interactive TUI Dashboard</h3>
+          <p class="text-secondary-600 dark:text-secondary-400">
+            Monitor and manage your blocklists in real-time. Features a clean terminal layout showing device client mappings (IP to Group) with fuzzy search, header status, and quick keyboard shortcuts.
+          </p>
+        </div>
+        
+        <div class="card p-6">
+          <div class="w-12 h-12 rounded-lg bg-primary-100 dark:bg-primary-900/50 flex items-center justify-center text-primary-600 dark:text-primary-400 mb-4">
+            <svg class="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z" />
+            </svg>
+          </div>
+          <h3 class="text-xl mb-2">Per-Device Policies</h3>
+          <p class="text-secondary-600 dark:text-secondary-400">
+            Instantly map specific blocking rules to individual devices. Lock down the kids' tablets while keeping your work laptop unrestricted.
+          </p>
+        </div>
+      </div>
+    </div>
+  </section>
+</Layout>

@@ -86,21 +86,23 @@ To support the future **Live Status Plugin** (e.g. displaying real-time queries 
 
 ---
 
-## 5. Build, Release, & Installation
+### 5. Build, Release, & Installation (Completed & Verified)
 
-### 5.1 Compilation & Assembly
-The project will use Go's native cross-compilation capability. We will integrate **GoReleaser** in a GitHub Actions workflow to build release binaries.
+### 5.1 Compilation & Assembly (Completed)
+The project uses Go's native cross-compilation capability. We have integrated **GoReleaser** and version linker injections to compile versions and commits.
 
-### 5.2 Release Artifacts
+### 5.2 Release Artifacts (Completed)
 1.  **Static Binary**: Standalone compressed `.tar.gz` archive containing the binary.
 2.  **Debian Package (`.deb`)**:
-    *   Constructed via `goreleaser` or `nfpm`.
+    *   Constructed via `goreleaser` and `nfpm`.
     *   Integrates with Debian-based systems' standard package registry.
     *   Exposes clean install and remove routes (`apt install ./pab.deb` / `apt remove pab`).
 
-### 5.3 Installation Scripts
+### 5.3 Installation Scripts (Completed)
 *   **Bash Installer**: An `install.sh` script hosted in the Git repository that:
     1.  Detects system CPU architecture (rejecting 32-bit x86 architectures).
     2.  Downloads the latest release binary matching the architecture from GitHub Releases.
     3.  Verifies the SHA256 checksum against the official release manifest.
-    4.  Extracts and copies the binary to `/usr/local/bin/pab`.
+    4.  Verifies Cosign cryptographic signatures if `cosign` is present.
+    5.  Extracts and installs the binary to `/usr/local/bin/pab` (using sudo) or falls back to local user installation in `~/.local/bin/pab`.
+
