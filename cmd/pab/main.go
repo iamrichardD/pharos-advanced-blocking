@@ -34,7 +34,7 @@ func main() {
 		fmt.Fprintln(os.Stderr, "Error: Interactive mode requires a terminal.")
 		fmt.Fprintln(os.Stderr, "For automated use, specify a subcommand:")
 		fmt.Fprintln(os.Stderr, "  pab map --ip <IP> --group <GROUP>")
-		fmt.Fprintln(os.Stderr, "  pab deploy --yes")
+		fmt.Fprintln(os.Stderr, "  pab deploy -f")
 		fmt.Fprintln(os.Stderr, "Or use --json for machine-readable output.")
 		fmt.Fprintln(os.Stderr, "Or use 'pab --help' to see all commands.")
 		os.Exit(1)

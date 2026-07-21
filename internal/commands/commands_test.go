@@ -194,7 +194,7 @@ func TestUnmapCommand(t *testing.T) {
 }
 
 func TestDeployCommand(t *testing.T) {
-	t.Run("successfully deploys configuration with --yes flag", func(t *testing.T) {
+	t.Run("successfully deploys configuration with -f flag", func(t *testing.T) {
 		// Mock Technitium API Server
 		serverCalled := false
 		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -221,7 +221,7 @@ func TestDeployCommand(t *testing.T) {
 
 		var outBuf, errBuf bytes.Buffer
 		rootCmd := NewRootCmd(nil, &outBuf, &errBuf, "dev", "none", "unknown")
-		rootCmd.SetArgs([]string{"--config", configPath, "deploy", "--yes"})
+		rootCmd.SetArgs([]string{"--config", configPath, "deploy", "-f"})
 
 		if err := rootCmd.Execute(); err != nil {
 			t.Fatalf("unexpected deploy error: %v", err)
@@ -309,7 +309,7 @@ func TestDeployCommand(t *testing.T) {
 			t.Fatalf("unexpected deploy error: %v", err)
 		}
 
-		if !strings.Contains(outBuf.String(), "Deployment to node \"default\" cancelled.") {
+		if !strings.Contains(outBuf.String(), "Deployment cancelled.") {
 			t.Errorf("unexpected output: %s", outBuf.String())
 		}
 	})
@@ -334,7 +334,7 @@ func TestDeployCommand(t *testing.T) {
 
 		secretsPath := filepath.Join(pabConfigDir, "secrets.json")
 		// Write secrets file with weak permissions (0644 instead of 0600)
-		err = os.WriteFile(secretsPath, []byte(`{"nodes":{"tech-01":{"url":"http://localhost:5380","token":"123"}}}`), 0644)
+		err = os.WriteFile(secretsPath, []byte(`{"nodes":[{"url":"http://localhost:5380","token":"123"}]}`), 0644)
 		if err != nil {
 			t.Fatalf("failed to write secrets file: %v", err)
 		}
@@ -356,6 +356,400 @@ func TestDeployCommand(t *testing.T) {
 		}
 		if !strings.Contains(errBuf.String(), "SECURITY WARNING:") {
 			t.Errorf("expected warning in stderr, got: %s", errBuf.String())
+		}
+	})
+
+	t.Run("handles empty nodes array in secrets.json", func(t *testing.T) {
+		tmpDir := t.TempDir()
+		configPath := filepath.Join(tmpDir, "dnsApp.config")
+		cfg := &config.Config{
+			Groups: []config.Group{
+				{Name: "Default", EnableBlocking: true},
+			},
+		}
+		helperWriteConfig(t, configPath, cfg)
+
+		// Set XDG_CONFIG_HOME to check user config secrets file
+		t.Setenv("XDG_CONFIG_HOME", tmpDir)
+		pabConfigDir := filepath.Join(tmpDir, "pab")
+		err := os.MkdirAll(pabConfigDir, 0755)
+		if err != nil {
+			t.Fatalf("failed to create mock config dir: %v", err)
+		}
+
+		secretsPath := filepath.Join(pabConfigDir, "secrets.json")
+		// Write secrets file with empty nodes array
+		err = os.WriteFile(secretsPath, []byte(`{"nodes":[]}`), 0600)
+		if err != nil {
+			t.Fatalf("failed to write secrets file: %v", err)
+		}
+
+		var outBuf, errBuf bytes.Buffer
+		rootCmd := NewRootCmd(nil, &outBuf, &errBuf, "dev", "none", "unknown")
+		rootCmd.SetArgs([]string{"--config", configPath, "deploy"})
+
+		err = rootCmd.Execute()
+		if err == nil {
+			t.Fatal("expected error due to empty nodes array, got nil")
+		}
+		if !strings.Contains(err.Error(), "no Technitium nodes configured") {
+			t.Errorf("expected error about no nodes, got: %v", err)
+		}
+	})
+
+	t.Run("successfully deploys to single node in array", func(t *testing.T) {
+		// Mock Technitium API Server
+		serverCalled := false
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if r.Method == http.MethodPost && r.URL.Path == "/api/apps/config/set" {
+				serverCalled = true
+				w.Write([]byte(`{"status": "ok"}`))
+				return
+			}
+			w.WriteHeader(http.StatusBadRequest)
+		}))
+		defer server.Close()
+
+		t.Setenv("TECHNITIUM_URL", server.URL)
+		t.Setenv("TECHNITIUM_TOKEN", "mock-token")
+
+		tmpDir := t.TempDir()
+		configPath := filepath.Join(tmpDir, "dnsApp.config")
+		cfg := &config.Config{
+			Groups: []config.Group{
+				{Name: "Default", EnableBlocking: true},
+			},
+		}
+		helperWriteConfig(t, configPath, cfg)
+
+		// Set XDG_CONFIG_HOME to check user config secrets file
+		t.Setenv("XDG_CONFIG_HOME", tmpDir)
+		pabConfigDir := filepath.Join(tmpDir, "pab")
+		err := os.MkdirAll(pabConfigDir, 0755)
+		if err != nil {
+			t.Fatalf("failed to create mock config dir: %v", err)
+		}
+
+		secretsPath := filepath.Join(pabConfigDir, "secrets.json")
+		// Write secrets file with single node
+		err = os.WriteFile(secretsPath, []byte(`{"nodes":[{"url":"`+server.URL+`","token":"mock-token"}]}`), 0600)
+		if err != nil {
+			t.Fatalf("failed to write secrets file: %v", err)
+		}
+
+		var outBuf, errBuf bytes.Buffer
+		rootCmd := NewRootCmd(nil, &outBuf, &errBuf, "dev", "none", "unknown")
+		rootCmd.SetArgs([]string{"--config", configPath, "deploy", "-f"})
+
+		if err := rootCmd.Execute(); err != nil {
+			t.Fatalf("unexpected deploy error: %v", err)
+		}
+
+		if !serverCalled {
+			t.Error("expected mock server to be called during deployment")
+		}
+		if !strings.Contains(outBuf.String(), "Successfully deployed configuration to node") {
+			t.Errorf("unexpected output: %s", outBuf.String())
+		}
+	})
+
+	t.Run("successfully deploys to multiple nodes with correct naming", func(t *testing.T) {
+		// Mock Technitium API Server
+		callCount := 0
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if r.Method == http.MethodPost && r.URL.Path == "/api/apps/config/set" {
+				callCount++
+				w.Write([]byte(`{"status": "ok"}`))
+				return
+			}
+			w.WriteHeader(http.StatusBadRequest)
+		}))
+		defer server.Close()
+
+		t.Setenv("TECHNITIUM_URL", server.URL)
+		t.Setenv("TECHNITIUM_TOKEN", "mock-token")
+
+		tmpDir := t.TempDir()
+		configPath := filepath.Join(tmpDir, "dnsApp.config")
+		cfg := &config.Config{
+			Groups: []config.Group{
+				{Name: "Default", EnableBlocking: true},
+			},
+		}
+		helperWriteConfig(t, configPath, cfg)
+
+		// Set XDG_CONFIG_HOME to check user config secrets file
+		t.Setenv("XDG_CONFIG_HOME", tmpDir)
+		pabConfigDir := filepath.Join(tmpDir, "pab")
+		err := os.MkdirAll(pabConfigDir, 0755)
+		if err != nil {
+			t.Fatalf("failed to create mock config dir: %v", err)
+		}
+
+		secretsPath := filepath.Join(pabConfigDir, "secrets.json")
+		// Write secrets file with multiple nodes
+		err = os.WriteFile(secretsPath, []byte(`{"nodes":[{"url":"`+server.URL+`","token":"mock-token"},{"url":"`+server.URL+`","token":"mock-token"}]}`), 0600)
+		if err != nil {
+			t.Fatalf("failed to write secrets file: %v", err)
+		}
+
+		var outBuf, errBuf bytes.Buffer
+		rootCmd := NewRootCmd(nil, &outBuf, &errBuf, "dev", "none", "unknown")
+		rootCmd.SetArgs([]string{"--config", configPath, "deploy", "-f"})
+
+		if err := rootCmd.Execute(); err != nil {
+			t.Fatalf("unexpected deploy error: %v", err)
+		}
+
+		// Should call the server at least twice, once for each node (may have additional validation calls)
+		if callCount < 2 {
+			t.Errorf("expected server to be called at least 2 times, got %d", callCount)
+		}
+
+		output := outBuf.String()
+		// Verify correct node naming
+		if !strings.Contains(output, "node-0") {
+			t.Errorf("missing node-0 in output: %s", output)
+		}
+		if !strings.Contains(output, "node-1") {
+			t.Errorf("missing node-1 in output: %s", output)
+		}
+	})
+
+	t.Run("shows single confirmation prompt for multiple nodes", func(t *testing.T) {
+		tmpDir := t.TempDir()
+		configPath := filepath.Join(tmpDir, "dnsApp.config")
+		cfg := &config.Config{
+			Groups: []config.Group{
+				{Name: "Default", EnableBlocking: true},
+			},
+		}
+		helperWriteConfig(t, configPath, cfg)
+
+		// Set XDG_CONFIG_HOME to check user config secrets file
+		t.Setenv("XDG_CONFIG_HOME", tmpDir)
+		pabConfigDir := filepath.Join(tmpDir, "pab")
+		err := os.MkdirAll(pabConfigDir, 0755)
+		if err != nil {
+			t.Fatalf("failed to create mock config dir: %v", err)
+		}
+
+		secretsPath := filepath.Join(pabConfigDir, "secrets.json")
+		// Write secrets file with multiple nodes
+		err = os.WriteFile(secretsPath, []byte(`{"nodes":[{"url":"http://localhost:5380","token":"123"},{"url":"http://localhost:5380","token":"123"}]}`), 0600)
+		if err != nil {
+			t.Fatalf("failed to write secrets file: %v", err)
+		}
+
+		// Pass 'n' to stdin to reject confirmation
+		inBuf := bytes.NewBufferString("n\n")
+		var outBuf, errBuf bytes.Buffer
+		rootCmd := NewRootCmd(inBuf, &outBuf, &errBuf, "dev", "none", "unknown")
+		rootCmd.SetArgs([]string{"--config", configPath, "deploy"})
+
+		if err := rootCmd.Execute(); err != nil {
+			t.Fatalf("unexpected deploy error: %v", err)
+		}
+
+		output := outBuf.String()
+		// Verify single confirmation prompt appears
+		if !strings.Contains(output, "Deploy to all nodes?") {
+			t.Errorf("missing 'Deploy to all nodes?' confirmation in output: %s", output)
+		}
+		// Verify deployment was cancelled
+		if !strings.Contains(output, "Deployment cancelled.") {
+			t.Errorf("missing cancellation message in output: %s", output)
+		}
+	})
+
+	t.Run("targets_specific_node_with_--node_flag", func(t *testing.T) {
+		// Mock Technitium API Server
+		callCount := 0
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if r.Method == http.MethodPost && r.URL.Path == "/api/apps/config/set" {
+				callCount++
+				w.Write([]byte(`{"status": "ok"}`))
+				return
+			}
+			w.WriteHeader(http.StatusBadRequest)
+		}))
+		defer server.Close()
+
+		tmpDir := t.TempDir()
+		configPath := filepath.Join(tmpDir, "dnsApp.config")
+		cfg := &config.Config{
+			Groups: []config.Group{
+				{Name: "Default", EnableBlocking: true},
+			},
+		}
+		helperWriteConfig(t, configPath, cfg)
+
+		// Configure multiple nodes via environment variables
+		t.Setenv("TECHNITIUM_NODE_DNS1_URL", server.URL)
+		t.Setenv("TECHNITIUM_NODE_DNS1_TOKEN", "token1")
+		t.Setenv("TECHNITIUM_NODE_DNS2_URL", server.URL)
+		t.Setenv("TECHNITIUM_NODE_DNS2_TOKEN", "token2")
+		t.Setenv("TECHNITIUM_NODE_DNS3_URL", server.URL)
+		t.Setenv("TECHNITIUM_NODE_DNS3_TOKEN", "token3")
+
+		var outBuf, errBuf bytes.Buffer
+		rootCmd := NewRootCmd(nil, &outBuf, &errBuf, "dev", "none", "unknown")
+		rootCmd.SetArgs([]string{"--config", configPath, "deploy", "--node", "dns2", "-f"})
+
+		if err := rootCmd.Execute(); err != nil {
+			t.Fatalf("unexpected deploy error: %v", err)
+		}
+
+		// Verify only one deployment call (for dns2)
+		if callCount != 1 {
+			t.Errorf("expected 1 server call for dns2, got %d", callCount)
+		}
+
+		output := outBuf.String()
+		if !strings.Contains(output, "Syncing configuration to node \"dns2\"") {
+			t.Errorf("expected sync message for dns2, got output: %s", output)
+		}
+		if !strings.Contains(output, "Successfully deployed configuration to node \"dns2\"") {
+			t.Errorf("expected success message for dns2, got output: %s", output)
+		}
+	})
+
+	t.Run("fails_when_target_node_does_not_exist", func(t *testing.T) {
+		tmpDir := t.TempDir()
+		configPath := filepath.Join(tmpDir, "dnsApp.config")
+		cfg := &config.Config{
+			Groups: []config.Group{
+				{Name: "Default", EnableBlocking: true},
+			},
+		}
+		helperWriteConfig(t, configPath, cfg)
+
+		// Configure only DNS1 node
+		t.Setenv("TECHNITIUM_NODE_DNS1_URL", "http://localhost:5380")
+		t.Setenv("TECHNITIUM_NODE_DNS1_TOKEN", "token1")
+
+		var outBuf, errBuf bytes.Buffer
+		rootCmd := NewRootCmd(nil, &outBuf, &errBuf, "dev", "none", "unknown")
+		rootCmd.SetArgs([]string{"--config", configPath, "deploy", "--node", "nonexistent", "-f"})
+
+		err := rootCmd.Execute()
+		if err == nil {
+			t.Fatal("expected error when targeting non-existent node, got nil")
+		}
+
+		if !strings.Contains(err.Error(), "target node \"nonexistent\" is not defined") {
+			t.Errorf("expected error about undefined node, got: %v", err)
+		}
+	})
+}
+
+func TestListNodesCommand(t *testing.T) {
+	t.Run("displays_all_configured_nodes", func(t *testing.T) {
+		// Configure 3 nodes via environment variables
+		t.Setenv("TECHNITIUM_NODE_DNS1_URL", "http://dns1.example.com:5380")
+		t.Setenv("TECHNITIUM_NODE_DNS1_TOKEN", "token1")
+		t.Setenv("TECHNITIUM_NODE_DNS2_URL", "http://dns2.example.com:5380")
+		t.Setenv("TECHNITIUM_NODE_DNS2_TOKEN", "token2")
+		t.Setenv("TECHNITIUM_NODE_PROD_URL", "http://prod.example.com:5380")
+		t.Setenv("TECHNITIUM_NODE_PROD_TOKEN", "prod-token")
+
+		var outBuf, errBuf bytes.Buffer
+		rootCmd := NewRootCmd(nil, &outBuf, &errBuf, "dev", "none", "unknown")
+		rootCmd.SetArgs([]string{"list-nodes"})
+
+		if err := rootCmd.Execute(); err != nil {
+			t.Fatalf("unexpected error executing list-nodes: %v", err)
+		}
+
+		output := outBuf.String()
+		// Verify all 3 node names appear in output
+		if !strings.Contains(output, "dns1") {
+			t.Errorf("expected dns1 node in output: %s", output)
+		}
+		if !strings.Contains(output, "dns2") {
+			t.Errorf("expected dns2 node in output: %s", output)
+		}
+		if !strings.Contains(output, "prod") {
+			t.Errorf("expected prod node in output: %s", output)
+		}
+
+		// Verify nodes appear in sorted order
+		pos1 := strings.Index(output, "dns1")
+		pos2 := strings.Index(output, "dns2")
+		pos3 := strings.Index(output, "prod")
+		if pos1 < 0 || pos2 < 0 || pos3 < 0 {
+			t.Fatalf("could not find all node names in output")
+		}
+		if !(pos1 < pos2 && pos2 < pos3) {
+			t.Errorf("nodes not in sorted order: dns1@%d, dns2@%d, prod@%d", pos1, pos2, pos3)
+		}
+	})
+
+	t.Run("handles_no_nodes_configured", func(t *testing.T) {
+		// Clear any environment variables that might configure nodes
+		for _, env := range os.Environ() {
+			if strings.HasPrefix(env, "TECHNITIUM_") {
+				parts := strings.SplitN(env, "=", 2)
+				if len(parts) == 2 {
+					t.Setenv(parts[0], "")
+				}
+			}
+		}
+
+		// Set XDG_CONFIG_HOME to prevent reading real secrets
+		tmpDir := t.TempDir()
+		t.Setenv("XDG_CONFIG_HOME", tmpDir)
+
+		var outBuf, errBuf bytes.Buffer
+		rootCmd := NewRootCmd(nil, &outBuf, &errBuf, "dev", "none", "unknown")
+		rootCmd.SetArgs([]string{"list-nodes"})
+
+		if err := rootCmd.Execute(); err != nil {
+			t.Fatalf("unexpected error executing list-nodes with no nodes: %v", err)
+		}
+
+		output := outBuf.String()
+		if !strings.Contains(output, "No Technitium nodes configured") {
+			t.Errorf("expected helpful error message about no nodes, got: %s", output)
+		}
+	})
+
+	t.Run("formats_output_as_table", func(t *testing.T) {
+		// Configure 2 nodes with specific URLs
+		t.Setenv("TECHNITIUM_NODE_DNS1_URL", "http://dns1.example.com:5380")
+		t.Setenv("TECHNITIUM_NODE_DNS1_TOKEN", "token1")
+		t.Setenv("TECHNITIUM_NODE_DNS2_URL", "http://dns2.example.com:5380")
+		t.Setenv("TECHNITIUM_NODE_DNS2_TOKEN", "token2")
+
+		var outBuf, errBuf bytes.Buffer
+		rootCmd := NewRootCmd(nil, &outBuf, &errBuf, "dev", "none", "unknown")
+		rootCmd.SetArgs([]string{"list-nodes"})
+
+		if err := rootCmd.Execute(); err != nil {
+			t.Fatalf("unexpected error executing list-nodes: %v", err)
+		}
+
+		output := outBuf.String()
+		// Verify table headers are present
+		if !strings.Contains(output, "Node Name") {
+			t.Errorf("expected 'Node Name' header, got output: %s", output)
+		}
+		if !strings.Contains(output, "URL") {
+			t.Errorf("expected 'URL' header, got output: %s", output)
+		}
+
+		// Verify node names and URLs appear
+		if !strings.Contains(output, "dns1") {
+			t.Errorf("expected dns1 node name in table, got: %s", output)
+		}
+		if !strings.Contains(output, "http://dns1.example.com:5380") {
+			t.Errorf("expected dns1 URL in table, got: %s", output)
+		}
+		if !strings.Contains(output, "dns2") {
+			t.Errorf("expected dns2 node name in table, got: %s", output)
+		}
+		if !strings.Contains(output, "http://dns2.example.com:5380") {
+			t.Errorf("expected dns2 URL in table, got: %s", output)
 		}
 	})
 }

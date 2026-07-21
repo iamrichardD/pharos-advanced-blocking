@@ -58,9 +58,10 @@ Before saving any modifications to disk or posting to an API, the CLI runs a val
 ### 3.5 Sync & Deploy Engine
 Once validated, the CLI can sync the disk configuration to one or more target Technitium installations:
 *   **Command**: `pab deploy [flags]`
-*   **Dry Run**: `--dry-run` performs a full structural diff between the disk configuration and the server API, listing what will be updated on each server without applying changes.
-*   **Target Selection**: Deploy to all configured servers, or specify target nodes via `--node technitium-01`.
-*   **Non-interactive**: The `--yes` flag bypasses confirmation prompts.
+*   **Dry Run**: `pab deploy --dry-run` performs a full structural diff between the disk configuration and the server API, listing what will be updated on each node without applying changes.
+*   **Deployment Workflow**: After validating with `--dry-run`, run `pab deploy -f` to deploy the configuration to all configured nodes simultaneously. The array-based `secrets.json` schema defines all deployment targets as a unit, ensuring active-active deployment across all nodes.
+*   **Node Discovery**: Use `pab list-nodes` to view all available node identities before deploying.
+*   **Non-interactive Mode**: The `-f` (or `--force`) flag bypasses confirmation prompts for automation and scripting.
 
 ---
 
@@ -74,10 +75,19 @@ Once validated, the CLI can sync the disk configuration to one or more target Te
 
 ### 4.2 Security & Credential Store
 To protect Technitium API tokens, the CLI will look for secrets in the following order:
-1.  **Environment Variables**: `TECHNITIUM_TOKEN_01`, `TECHNITIUM_TOKEN_02`, etc.
+1.  **Environment Variables**: `TECHNITIUM_NODE_<name>_URL` and `TECHNITIUM_NODE_<name>_TOKEN` patterns (e.g., `TECHNITIUM_NODE_DNS1_URL`, `TECHNITIUM_NODE_DNS1_TOKEN`, `TECHNITIUM_NODE_DNS2_URL`, `TECHNITIUM_NODE_DNS2_TOKEN`).
 2.  **OS Secure Config Path**: If environment variables are absent, reads credentials from a local configuration directory (e.g. `~/.config/pab/secrets.json`).
+    *   **Array-Based Schema**: The `secrets.json` file uses an array structure to define all deployment nodes as a unit:
+        ```json
+        {
+          "nodes": [
+            {"url": "https://dns1.example.com:5385", "token": "api-token-dns1"},
+            {"url": "https://dns2.example.com:5385", "token": "api-token-dns2"}
+          ]
+        }
+        ```
     *   **Requirements**: The CLI will refuse to run and print a warning if this configuration file does not have strict permissions (`chmod 600`), preventing other system users from reading the file contents.
-3.  **Onboarding Wizard**: Prompts to securely paste tokens and saves them directly to `~/.config/pab/secrets.json` with permissions set automatically to `600`.
+3.  **Onboarding Wizard**: Prompts to securely enter node URLs and tokens, saves them directly to `~/.config/pab/secrets.json` in the array format with permissions set automatically to `600`.
 
 ### 4.3 Plugin Extensibility (Phase 6 - Completed)
 To support the future **Live Status Plugin** (e.g. displaying real-time queries and lease information across multiple nodes), the CLI core implements an RPC-like sub-process plugin engine:

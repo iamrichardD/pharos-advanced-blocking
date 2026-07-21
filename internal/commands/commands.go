@@ -20,7 +20,7 @@ import (
 
 // SecretsConfig defines the structure for local secrets file ~/.config/pab/secrets.json
 type SecretsConfig struct {
-	Nodes map[string]NodeConfig `json:"nodes"`
+	Nodes []NodeConfig `json:"nodes"`
 }
 
 // NodeConfig defines the URL and token for a Technitium node.
@@ -77,6 +77,7 @@ func NewRootCmd(stdin io.Reader, stdout, stderr io.Writer, version, commit, date
 	rootCmd.AddCommand(newMapCmd(global, stdout, stderr))
 	rootCmd.AddCommand(newUnmapCmd(global, stdout, stderr))
 	rootCmd.AddCommand(newDeployCmd(global, stdin, stdout, stderr))
+	rootCmd.AddCommand(newListNodesCmd(global, stdout, stderr))
 
 	// Load Plugins
 	configDir, err := os.UserConfigDir()
@@ -201,10 +202,10 @@ func newUnmapCmd(global *GlobalFlags, stdout, stderr io.Writer) *cobra.Command {
 	return cmd
 }
 
-// newDeployCmd defines the "pab deploy [--dry-run] [--yes] [--node <name>]" command.
+// newDeployCmd defines the "pab deploy [--dry-run] [-f|--force] [--node <name>]" command.
 func newDeployCmd(global *GlobalFlags, stdin io.Reader, stdout, stderr io.Writer) *cobra.Command {
 	var dryRun bool
-	var yes bool
+	var force bool
 	var targetNode string
 
 	cmd := &cobra.Command{
@@ -251,6 +252,21 @@ func newDeployCmd(global *GlobalFlags, stdin io.Reader, stdout, stderr io.Writer
 				targets = nodes
 			}
 
+			// If not dry-run and not force, ask for confirmation once before processing all nodes
+			if !dryRun && !force {
+				fmt.Fprintf(stdout, "Deploy to all nodes? (y/N): ")
+				reader := bufio.NewReader(stdin)
+				text, err := reader.ReadString('\n')
+				if err != nil {
+					return fmt.Errorf("failed to read confirmation: %w", err)
+				}
+				text = strings.ToLower(strings.TrimSpace(text))
+				if text != "y" && text != "yes" {
+					fmt.Fprintf(stdout, "Deployment cancelled.\n")
+					return nil
+				}
+			}
+
 			// Process nodes
 			for name, node := range targets {
 				c := client.NewClient(node.URL, node.Token)
@@ -273,21 +289,6 @@ func newDeployCmd(global *GlobalFlags, stdin io.Reader, stdout, stderr io.Writer
 					continue
 				}
 
-				// If not dry-run, ask for confirmation unless --yes is passed
-				if !yes {
-					fmt.Fprintf(stdout, "Deploy local configuration to node %q? (y/N): ", name)
-					reader := bufio.NewReader(stdin)
-					text, err := reader.ReadString('\n')
-					if err != nil {
-						return fmt.Errorf("failed to read confirmation: %w", err)
-					}
-					text = strings.ToLower(strings.TrimSpace(text))
-					if text != "y" && text != "yes" {
-						fmt.Fprintf(stdout, "Deployment to node %q cancelled.\n", name)
-						continue
-					}
-				}
-
 				fmt.Fprintf(stdout, "Syncing configuration to node %q...\n", name)
 				if err := c.SetAppConfig(configJSON); err != nil {
 					return fmt.Errorf("failed to deploy to node %q: %w", name, err)
@@ -300,8 +301,50 @@ func newDeployCmd(global *GlobalFlags, stdin io.Reader, stdout, stderr io.Writer
 	}
 
 	cmd.Flags().BoolVar(&dryRun, "dry-run", false, "Runs validation check and structural diff without writing to API")
-	cmd.Flags().BoolVar(&yes, "yes", false, "Bypass confirmation prompts")
+	cmd.Flags().BoolVarP(&force, "force", "f", false, "Force deployment without confirmation")
 	cmd.Flags().StringVar(&targetNode, "node", "", "Override target to a specific node name")
+
+	return cmd
+}
+
+// newListNodesCmd defines the "pab list-nodes" command.
+func newListNodesCmd(global *GlobalFlags, stdout, stderr io.Writer) *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "list-nodes",
+		Short: "List configured Technitium nodes",
+		Long:  `Display all configured Technitium nodes from environment variables and secrets.json with their URLs.`,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			// Resolve Technitium nodes from environment and secrets.json
+			nodes, err := resolveNodes()
+			if err != nil {
+				return err
+			}
+
+			if len(nodes) == 0 {
+				fmt.Fprintf(stdout, "No Technitium nodes configured. Set environment variables or define them in ~/.config/pab/secrets.json\n")
+				return nil
+			}
+
+			// Sort node names for consistent output
+			var nodeNames []string
+			for name := range nodes {
+				nodeNames = append(nodeNames, name)
+			}
+			slices.Sort(nodeNames)
+
+			// Print header
+			fmt.Fprintf(stdout, "%-20s %s\n", "Node Name", "URL")
+			fmt.Fprintf(stdout, "%-20s %s\n", strings.Repeat("-", 9), strings.Repeat("-", 45))
+
+			// Print nodes
+			for _, name := range nodeNames {
+				node := nodes[name]
+				fmt.Fprintf(stdout, "%-20s %s\n", name, node.URL)
+			}
+
+			return nil
+		},
+	}
 
 	return cmd
 }
@@ -395,7 +438,8 @@ func resolveNodes() (map[string]NodeConfig, error) {
 			if readErr == nil {
 				var sc SecretsConfig
 				if jsonErr := json.Unmarshal(fileBytes, &sc); jsonErr == nil {
-					for name, node := range sc.Nodes {
+					for i, node := range sc.Nodes {
+						name := fmt.Sprintf("node-%d", i)
 						nodes[name] = node
 					}
 				}

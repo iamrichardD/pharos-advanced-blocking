@@ -120,12 +120,12 @@ Sync your validated configuration to Technitium DNS server API nodes.
 
 **Syntax:**
 ```bash
-pab deploy [--dry-run] [--yes] [--node <name>]
+pab deploy [--dry-run] [-f, --force] [--node <name>]
 ```
 
 **Flags:**
 - `--dry-run`: Preview changes (validation + structural diff) without applying. Shows what would change on the target node(s).
-- `--yes`: Bypass confirmation prompts and deploy immediately (useful for automated/CI deployments).
+- `-f, --force`: Deploy to all nodes without confirmation prompt (useful for automated/CI deployments).
 - `--node <name>`: Deploy to a specific node by name instead of all configured nodes.
 
 **Examples:**
@@ -142,12 +142,12 @@ pab deploy
 
 Deploy to a single node without confirmation:
 ```bash
-pab deploy --yes --node production
+pab deploy -f --node production
 ```
 
-Deploy to all nodes silently (for automation):
+Deploy to all nodes without confirmation (for automation):
 ```bash
-pab deploy --yes
+pab deploy -f
 ```
 
 **When to use:** Pushing validated configurations to your Technitium instances, verifying changes in dry-run mode before committing, or automating deployments in GitOps workflows.
@@ -166,14 +166,14 @@ pab deploy --yes
 Always run `--dry-run` first to see what will change:
 ```bash
 pab deploy --dry-run
-pab deploy --yes
+pab deploy -f
 ```
 
-**Automation with `--yes`:**
-Use `--yes` in CI/CD pipelines to skip interactive prompts:
+**Automation with `-f, --force`:**
+Use `-f` or `--force` in CI/CD pipelines to skip interactive prompts:
 ```bash
 pab map --ip 192.0.2.100 --group Kids
-pab deploy --yes
+pab deploy -f
 ```
 
 **Error Handling:**

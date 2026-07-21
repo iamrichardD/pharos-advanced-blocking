@@ -33,7 +33,7 @@ To develop this project in future sessions, implement modules in this sequence:
 2.  Define subcommands:
     *   `pab map --ip <IP> --group <GROUP>`
     *   `pab unmap --ip <IP>`
-    *   `pab deploy` (with `--dry-run` and `--yes` overrides).
+    *   `pab deploy` (with `--dry-run` and `-f` overrides).
 
 ### Phase 4: Terminal User Interface (`internal/tui/`)
 1.  Implement a Bubble Tea model-view loop in `internal/tui/` to render client lists, groups, and search filters.

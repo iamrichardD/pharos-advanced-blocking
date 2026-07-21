@@ -61,24 +61,31 @@ Follow the [Installation](/installation) guide to install the CLI.
 
 **Option 1: Environment Variables** (recommended for CI/CD)
 
-Set these environment variables for a single Technitium node:
+For a single Technitium node:
 
 ```bash
 export TECHNITIUM_URL="https://dns.example.com:5380"
 export TECHNITIUM_TOKEN="your_api_token_here"
 ```
 
-Or for multiple nodes:
+For multiple identical nodes (active-active replication):
 
 ```bash
-export TECHNITIUM_NODE_PROD_URL="https://dns1.example.com:5380"
-export TECHNITIUM_NODE_PROD_TOKEN="prod_token_here"
+export TECHNITIUM_NODE_DNS1_URL="https://dns1.example.com:5380"
+export TECHNITIUM_NODE_DNS1_TOKEN="token_for_dns1"
 
-export TECHNITIUM_NODE_STAGING_URL="https://dns2.example.com:5380"
-export TECHNITIUM_NODE_STAGING_TOKEN="staging_token_here"
+export TECHNITIUM_NODE_DNS2_URL="https://dns2.example.com:5380"
+export TECHNITIUM_NODE_DNS2_TOKEN="token_for_dns2"
 ```
 
-Then deploy with `--node prod` or `--node staging`.
+Deploy to all nodes with a single command:
+
+```bash
+pab deploy --dry-run  # Validate first
+pab deploy -f         # Deploy to all nodes simultaneously
+```
+
+The `-f` flag forces deployment without confirmation prompts. All nodes receive identical configs.
 
 **Option 2: Secrets File** (recommended for local development)
 
@@ -86,20 +93,24 @@ Create a secrets file at `~/.config/pab/secrets.json` with mode `chmod 600`:
 
 ```json
 {
-  "nodes": {
-    "prod": {
+  "nodes": [
+    {
       "url": "https://dns1.example.com:5380",
-      "token": "prod_token_here"
+      "token": "token_for_dns1"
     },
-    "staging": {
+    {
       "url": "https://dns2.example.com:5380",
-      "token": "staging_token_here"
+      "token": "token_for_dns2"
     }
-  }
+  ]
 }
 ```
 
-Then deploy with `pab deploy --node prod`.
+Then deploy to all nodes with:
+```bash
+pab deploy --dry-run  # Validate first
+pab deploy -f         # Deploy to all nodes simultaneously
+```
 
 **Security:** Both approaches work; choose what fits your workflow. Environment variables are safer in CI/CD (no secrets files in repos). Secrets files are convenient for local development (not committed to Git).
 
@@ -246,16 +257,16 @@ Once you're confident, deploy:
 pab deploy
 ```
 
-By default, you'll be prompted to confirm before each node is updated. Use `--yes` to skip prompts:
+By default, you'll be prompted to confirm before deploying to all nodes. Use `-f`/`--force` to skip the confirmation prompt:
 
 ```bash
-pab deploy --yes
+pab deploy -f
 ```
 
 Or target a specific node:
 
 ```bash
-pab deploy --yes --node production
+pab deploy -f --node production
 ```
 
 ### Multi-Device Example
@@ -267,15 +278,15 @@ pab map --ip 192.0.2.50 --group Kids
 pab map --ip 192.0.2.51 --group Kids
 pab map --ip 203.0.113.10 --group IoT
 pab deploy --dry-run
-pab deploy --yes
+pab deploy -f
 ```
 
 ### Safety Features
 
 - **Schema validation:** Every `pab map` call validates your IP and group name before writing.
 - **Dry-run inspection:** `pab deploy --dry-run` shows changes without applying them.
-- **Confirmation prompts:** Deployment prompts before sending to each node (unless `--yes` is set).
-- **Rollback safety:** One `pab deploy --yes` can be undone by reverting your config file and re-deploying.
+- **Confirmation prompts:** Deployment prompts once before sending to all nodes (use `-f` to skip if you've already verified with `--dry-run`).
+- **Rollback safety:** One `pab deploy -f` can be undone by reverting your config file and re-deploying.
 
 ---
 
