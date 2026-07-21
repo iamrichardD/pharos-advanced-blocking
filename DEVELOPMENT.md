@@ -41,6 +41,38 @@ To develop this project in future sessions, implement modules in this sequence:
 
 ---
 
+## ⌨️ TUI Features & Interactions
+
+### Tab Completion (v0.2.0+)
+
+**Behavior:** IDE-style auto-complete for slash commands.
+
+- **Single match**: Pressing Tab completes the command to `<command-name> ` (with trailing space)
+- **Multi-match**: Tab completes to the currently highlighted candidate + space; use Up/Down arrows to navigate before Tab if needed
+- **After completion**: User can immediately type subcommand arguments (e.g., after Tab-completing `/view ` to see `/view `, typing `groups` produces `/view groups`)
+- **Outside command mode**: Tab is a no-op (safe fallback)
+
+**Example flows:**
+```
+User: /v[Tab]           → /view 
+User: /[Down][Down][Tab] → /exit  (if /exit was second in list)
+User: /view groups[Enter] → Execute view groups command
+```
+
+**Implementation note**: Exit typeahead mode after Tab completion (`inTypeaheadMode = false`) to allow subcommand argument typing without re-filtering against command names.
+
+### Slash Commands
+
+Available commands (typed with `/` prefix):
+- `/help` — Show available slash commands
+- `/clear` — Reset search and clear filters
+- `/exit` — Exit TUI
+- `/view groups` — List all groups with device counts
+- `/view group <name>` — Show details for a specific group (blocklists, allowed/blocked domains)
+- `/view networkGroupMap` — Show IP-to-group mappings
+
+---
+
 ## 🚀 Common Dev Commands (Cheat Sheet)
 
 ```bash
