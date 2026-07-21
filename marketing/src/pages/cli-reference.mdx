@@ -2,48 +2,190 @@
 layout: ../layouts/Layout.astro
 title: "CLI Reference | Pharos Advanced Blocking"
 ---
+
 # CLI Reference
 
-The `pab` CLI provides a robust interface for managing your advanced blocking configurations.
+The `pab` CLI provides a pragmatic interface for managing Technitium DNS blocking configurations via the command line and interactive TUI.
 
-## Global Flags
+---
 
-- `--config, -c <path>`: Path to custom configuration file (default: `/etc/pab/config.yaml`)
-- `--verbose, -v`: Enable verbose logging output
-- `--dry-run`: Validate configuration without applying changes
+## Global Flag
 
-## Commands
+All `pab` commands respect this global flag:
 
-### `pab start`
+- `--config, -c <path>`: Path to your Technitium `dnsApp.config` file (default: `dnsApp.config` in current directory)
 
-Starts the Pharos Advanced Blocking engine and the Bubble Tea TUI dashboard.
-
+Example:
 ```bash
-pab start --watch
+pab map --ip 192.0.2.50 --group Kids --config /etc/technitium/dnsApp.config
 ```
 
-### `pab reload`
+---
 
-Hot-reloads your dnsApp.config and blocklists without dropping active DNS queries.
+## Interactive Mode: The `pab` Command
 
+Running `pab` with no arguments (in a terminal) launches the interactive TUI dashboard.
+
+**What it does:** Opens a full-screen terminal UI where you can search, filter, and view your client IP mappings and blocking groups in real time.
+
+**Syntax:**
 ```bash
-pab reload
+pab
 ```
 
-### `pab validate`
+**When to use:** Exploring your configuration, searching for specific clients, or viewing group details interactively.
 
-Runs a strict validation engine against your dnsApp.config to prevent malformed JSON from breaking your DNS server.
+**Interactive Mode Features:**
+- Search clients by IP or group name
+- List all configured groups with device counts
+- View group details (allowed domains, blocked domains, blocklists)
+- Tab-complete slash commands for power-user efficiency
+- Exit via `/exit` or `Ctrl+C`
 
+**See also:** [Interactive Mode — Slash Commands](/user-guide#interactive-mode--slash-commands) and [Tab Completion](/user-guide#tab-completion) in the User Guide.
+
+---
+
+## Command: `pab map`
+
+Map (or reassign) a client IP to a blocking group.
+
+**What it does:** Adds or updates a client IP mapping in your configuration. The IP is validated for correct format (IPv4, IPv6, or CIDR). Configuration is validated before being written to disk.
+
+**Syntax:**
 ```bash
-pab validate --strict
+pab map --ip <IP> --group <GROUP>
 ```
 
-### `pab client`
+**Flags:**
+- `--ip <IP>` (required): Client IP address, CIDR range, or hostname
+- `--group <GROUP>` (required): Target blocking group name (must exist in your configuration)
 
-Manage DNS blocking client IP configurations.
+**Examples:**
 
+Map a single device to the Kids group:
 ```bash
-pab client add 192.168.1.100 --policy strict
-pab client list
-pab client remove 192.168.1.100
+pab map --ip 192.0.2.50 --group Kids
 ```
+
+Map a CIDR range to IoT devices:
+```bash
+pab map --ip 203.0.113.0/28 --group IoT
+```
+
+Reassign a device to a different group:
+```bash
+pab map --ip 198.51.100.100 --group Do-Not-Block
+```
+
+**When to use:** Programmatic assignment of devices (e.g., in CI/CD pipelines), automation scripts, or when you want command-line confirmation of mappings.
+
+---
+
+## Command: `pab unmap`
+
+Remove a client IP mapping from the configuration.
+
+**What it does:** Deletes a client IP mapping. Returns an error if the IP is not currently mapped. Configuration is validated after removal.
+
+**Syntax:**
+```bash
+pab unmap --ip <IP>
+```
+
+**Flags:**
+- `--ip <IP>` (required): Client IP address or CIDR range to remove
+
+**Examples:**
+
+Remove a single device:
+```bash
+pab unmap --ip 192.0.2.50
+```
+
+Remove a CIDR range:
+```bash
+pab unmap --ip 203.0.113.0/28
+```
+
+**When to use:** Deprovisioning devices, automating cleanup of old device mappings, or removing test IPs before deployment.
+
+---
+
+## Command: `pab deploy`
+
+Sync your validated configuration to Technitium DNS server API nodes.
+
+**What it does:** Sends your local configuration to one or more Technitium instances via the Web API. Supports dry-run preview, confirmation prompts, and multi-node deployments. No DNS queries are interrupted during deployment.
+
+**Syntax:**
+```bash
+pab deploy [--dry-run] [--yes] [--node <name>]
+```
+
+**Flags:**
+- `--dry-run`: Preview changes (validation + structural diff) without applying. Shows what would change on the target node(s).
+- `--yes`: Bypass confirmation prompts and deploy immediately (useful for automated/CI deployments).
+- `--node <name>`: Deploy to a specific node by name instead of all configured nodes.
+
+**Examples:**
+
+Preview changes before deploying:
+```bash
+pab deploy --dry-run
+```
+
+Deploy to all configured Technitium nodes with confirmation:
+```bash
+pab deploy
+```
+
+Deploy to a single node without confirmation:
+```bash
+pab deploy --yes --node production
+```
+
+Deploy to all nodes silently (for automation):
+```bash
+pab deploy --yes
+```
+
+**When to use:** Pushing validated configurations to your Technitium instances, verifying changes in dry-run mode before committing, or automating deployments in GitOps workflows.
+
+**Configuration Discovery:**
+`pab deploy` resolves Technitium node URLs and API tokens from:
+1. Environment variables: `TECHNITIUM_NODE_<name>_URL` and `TECHNITIUM_NODE_<name>_TOKEN`
+2. Environment variable fallback: `TECHNITIUM_URL` and `TECHNITIUM_TOKEN` (for single node)
+3. Config file: `~/.config/pab/secrets.json` (must have `chmod 600` permissions)
+
+---
+
+## Tips for CLI Integration
+
+**Dry-Run Before Deploy:**
+Always run `--dry-run` first to see what will change:
+```bash
+pab deploy --dry-run
+pab deploy --yes
+```
+
+**Automation with `--yes`:**
+Use `--yes` in CI/CD pipelines to skip interactive prompts:
+```bash
+pab map --ip 192.0.2.100 --group Kids
+pab deploy --yes
+```
+
+**Error Handling:**
+All commands exit with non-zero status on validation failure, making them safe for shell scripts:
+```bash
+pab map --ip 192.0.2.100 --group Kids || exit 1
+pab deploy --dry-run || exit 1
+```
+
+---
+
+## See Also
+
+- [User Guide](/user-guide): Setup, credentials, quickstart, and interactive mode
+- [Installation](/installation): Install the CLI

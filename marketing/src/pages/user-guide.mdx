@@ -5,38 +5,345 @@ title: "User Guide | Pharos Advanced Blocking"
 
 # User Guide
 
-Welcome to the User Guide for **Pharos Advanced Blocking (pab)**. This guide will walk you through setting up credentials, running configuration commands, and using the interactive dashboard.
+Welcome to the User Guide for **Pharos Advanced Blocking (pab)**. This guide covers setup, credentials, the interactive TUI, and command-line operations.
 
 ---
 
-## Quickstart Guide
+## Quickstart: Getting Started in 30 Seconds
 
-### Step 1: Install
-Install the CLI using the install script or Debian package.
+### 1. Run `pab` (Interactive Mode)
 
-### Step 2: Navigate
-Open your terminal and navigate to the directory where you have (or want to create) your Technitium `dnsApp.config` file.
+Open your terminal in the directory containing your Technitium `dnsApp.config` file and type:
 
-### Step 3: Run `pab`
-Run the `pab` command. `pab` automatically detects your local configuration files (like `dnsApp.config`), parses them, and saves modifications directly back to the disk. This local state management provides a secure offline safety net and GitOps integration.
+```bash
+pab
+```
 
-### Configure Credentials
-`pab` does NOT require a secrets file to start up. When you execute a command that communicates with your Technitium DNS server API (like `pab deploy`), `pab` will look for environment variables or a configuration file at `~/.config/pab/secrets.json` (protected with `chmod 600`). If none are found, it will safely prompt you for credentials or run in local dry-run validation mode.
+If you're in a terminal (TTY), the interactive TUI dashboard opens immediately.
 
+### 2. Explore Your Configuration
 
-You can also use the following environment variables:
-- `PAB_BASE_URL`: The URL of your Technitium DNS server API.
-- `PAB_API_TOKEN`: Your Technitium API access token.
+The TUI shows:
+- Your current client IP → group mappings
+- Real-time search by IP or group name
+- Available blocking groups and device counts
+
+### 3. Use Slash Commands
+
+Type `/help` to see all available commands, or try:
+
+- `/view groups` — List all groups with device counts
+- `/view group Kids` — Show details for the "Kids" group
+- `/clear` — Reset search and filters
+- `/exit` — Close the TUI
+
+### 4. Use Tab Completion
+
+Type `/view gr[Tab]` — the command auto-completes to `/view groups `. Tab completion works for all slash commands and respects your power-user workflow.
+
+### 5. Exit
+
+Press `Ctrl+C` or type `/exit` to close the TUI.
+
+**Next Steps:** Explore the [Interactive Mode](#interactive-mode--slash-commands) section to master slash commands, or jump to [Mapping & Deploying](#mapping--deploying) to assign devices programmatically.
+
+---
+
+## Installation & Credentials
+
+### Install pab
+
+Follow the [Installation](/installation) guide to install the CLI.
+
+### Set Up Credentials
+
+`pab` does NOT require credentials to start up or use interactive mode (reads local `dnsApp.config`). Credentials are only needed when deploying to a Technitium server via the `pab deploy` command.
+
+**Option 1: Environment Variables** (recommended for CI/CD)
+
+Set these environment variables for a single Technitium node:
+
+```bash
+export TECHNITIUM_URL="https://dns.example.com:5380"
+export TECHNITIUM_TOKEN="your_api_token_here"
+```
+
+Or for multiple nodes:
+
+```bash
+export TECHNITIUM_NODE_PROD_URL="https://dns1.example.com:5380"
+export TECHNITIUM_NODE_PROD_TOKEN="prod_token_here"
+
+export TECHNITIUM_NODE_STAGING_URL="https://dns2.example.com:5380"
+export TECHNITIUM_NODE_STAGING_TOKEN="staging_token_here"
+```
+
+Then deploy with `--node prod` or `--node staging`.
+
+**Option 2: Secrets File** (recommended for local development)
+
+Create a secrets file at `~/.config/pab/secrets.json` with mode `chmod 600`:
+
+```json
+{
+  "nodes": {
+    "prod": {
+      "url": "https://dns1.example.com:5380",
+      "token": "prod_token_here"
+    },
+    "staging": {
+      "url": "https://dns2.example.com:5380",
+      "token": "staging_token_here"
+    }
+  }
+}
+```
+
+Then deploy with `pab deploy --node prod`.
+
+**Security:** Both approaches work; choose what fits your workflow. Environment variables are safer in CI/CD (no secrets files in repos). Secrets files are convenient for local development (not committed to Git).
+
+---
+
+## Interactive Mode — Slash Commands
+
+When you run `pab` (with no arguments), you enter interactive mode. The TUI accepts **slash commands** for powerful, terminal-native operations.
+
+### Command Reference
+
+| Command | Aliases | Description | Example |
+|---------|---------|-------------|---------|
+| `/help` | `/?`, `/h` | Show all available slash commands | `/help` |
+| `/exit` | `/quit`, `/q` | Exit the TUI | `/exit` |
+| `/clear` | `/c` | Clear search input and reset all filters | `/clear` |
+| `/view groups` | `/v groups` | List all configured groups with device count per group | `/view groups` |
+| `/view group <name>` | `/v group <name>` | Show all details for a specific group (allowed domains, blocked domains, blocklists) | `/view group Kids` |
+| `/view group <name> blocklists` | `/v group <name> blocklists` | Show only blocked domains for a group | `/view group Kids blocklists` |
+| `/view group <name> allowed` | `/v group <name> allowed` | Show only allowed domains for a group | `/view group Kids allowed` |
+| `/view networkGroupMap` | `/v networkGroupMap` | Show all IP-to-group mappings (same as empty search) | `/view networkGroupMap` |
+
+### Usage Patterns
+
+**List all groups:**
+```
+/view groups
+```
+
+Output:
+```
+Group Name                 Devices
+Kids                             3
+IoT                              5
+Do-Not-Block                     1
+```
+
+**View Kids group details:**
+```
+/view group Kids
+```
+
+**See only blocklists for a group:**
+```
+/view group IoT blocklists
+```
+
+**View all IP → group assignments:**
+```
+/view networkGroupMap
+```
+
+---
+
+## Tab Completion
+
+Tab completion is an IDE-style power-user feature that accelerates slash command entry.
+
+### How It Works
+
+**Single Match (Auto-Complete):**
+
+Type a partial command that matches exactly one slash command, then press Tab. The command auto-completes with a trailing space:
+
+```
+/e[Tab]  →  /exit 
+/q[Tab]  →  /exit 
+/h[Tab]  →  /help 
+```
+
+**Multi-Match (Highlight + Navigate):**
+
+Type a partial command that matches multiple commands, then press Tab. The TUI highlights the first match:
+
+```
+/v[Tab]           →  Highlights "/view" (3 matching commands: /view, etc.)
+[Down][Down][Tab] →  Use arrow keys to navigate; Tab completes the highlighted command
+```
+
+**Subcommand Arguments (After Completion):**
+
+After Tab-completing to a command with arguments, type the subcommand immediately:
+
+```
+/v[Tab]  →  /view 
+groups[Enter]  →  Executes "/view groups"
+```
+
+Or combine them:
+
+```
+/view groups[Enter]  →  Shows all groups
+/view group Ki[Enter]  →  Shows the Kids group details
+```
+
+### Power-User Tips
+
+1. **Aliases work too:** `/v` and `/view` both work; Tab-complete either one.
+2. **Case-insensitive:** `/EXIT` and `/exit` are equivalent.
+3. **Subcommand autocomplete coming soon:** In future versions, subcommand names (like group names) will also tab-complete.
 
 ---
 
 ## Mapping & Deploying
 
-Once your configuration is ready, manage updates using the mapping and sync commands:
+Once your configuration is ready, manage updates using the CLI commands:
 
-1. **Map Policies** (`pab map`): 
-   Process your list data and map specific policies to devices or groups.
-2. **Verify Changes** (`pab deploy --dry-run`): 
-   Perform a dry-run check to validate configuration syntax and inspect changes without applying them.
-3. **Sync Policies** (`pab deploy`): 
-   Deploy your final configurations to Technitium. `pab` communicates securely via the Web API to apply modifications to Technitium instances with zero DNS service queries interruption.
+### Workflow Overview
+
+1. **Map Policies** (`pab map`): Assign client IPs to blocking groups
+2. **Preview Changes** (`pab deploy --dry-run`): Validate and inspect what will change
+3. **Deploy** (`pab deploy`): Sync to your Technitium instances
+
+### Step 1: Map a Client IP
+
+Add or update a device mapping:
+
+```bash
+pab map --ip 192.0.2.50 --group Kids
+```
+
+Validate succeeds instantly (local schema validation). If validation fails, the mapping is rejected and the config remains unchanged.
+
+### Step 2: Preview with Dry-Run
+
+Before deploying, see what will change:
+
+```bash
+pab deploy --dry-run
+```
+
+Output shows:
+- Structural diff between local and remote configuration
+- Any validation warnings
+- Summary of changes (new mappings, removed mappings, group updates)
+
+**Nothing is written to the server during dry-run.**
+
+### Step 3: Deploy to Technitium
+
+Once you're confident, deploy:
+
+```bash
+pab deploy
+```
+
+By default, you'll be prompted to confirm before each node is updated. Use `--yes` to skip prompts:
+
+```bash
+pab deploy --yes
+```
+
+Or target a specific node:
+
+```bash
+pab deploy --yes --node production
+```
+
+### Multi-Device Example
+
+Map several devices, then deploy once:
+
+```bash
+pab map --ip 192.0.2.50 --group Kids
+pab map --ip 192.0.2.51 --group Kids
+pab map --ip 203.0.113.10 --group IoT
+pab deploy --dry-run
+pab deploy --yes
+```
+
+### Safety Features
+
+- **Schema validation:** Every `pab map` call validates your IP and group name before writing.
+- **Dry-run inspection:** `pab deploy --dry-run` shows changes without applying them.
+- **Confirmation prompts:** Deployment prompts before sending to each node (unless `--yes` is set).
+- **Rollback safety:** One `pab deploy --yes` can be undone by reverting your config file and re-deploying.
+
+---
+
+## Configuration File Format
+
+Your `dnsApp.config` is a Technitium JSON file. `pab` respects its structure and validates your edits.
+
+**Key sections relevant to pab:**
+
+```json
+{
+  "groups": [
+    {
+      "name": "Kids",
+      "blocked": ["ads.example.com", "..."],
+      "allowed": ["youtube.com", "..."]
+    },
+    {
+      "name": "IoT",
+      "blocked": ["..."],
+      "allowed": []
+    }
+  ],
+  "networkGroupMap": {
+    "192.0.2.50": "Kids",
+    "203.0.113.10": "IoT"
+  }
+}
+```
+
+- `groups`: Define your blocking rule sets (what domains to block/allow)
+- `networkGroupMap`: Map client IPs to groups (this is what `pab map` and `pab unmap` edit)
+
+You can edit the file manually or via `pab` commands. Both approaches respect schema validation.
+
+---
+
+## Troubleshooting
+
+### "Configuration file not found"
+
+Ensure `dnsApp.config` exists in your current directory, or specify `--config`:
+
+```bash
+pab --config /etc/technitium/dnsApp.config map --ip 192.0.2.50 --group Kids
+```
+
+### "Failed to deploy to node"
+
+Check:
+1. Node URL and token are correct (via environment variables or `~/.config/pab/secrets.json`)
+2. Technitium API is reachable (test with `curl -k https://your-node:5380/api/`)
+3. API token has permission to write configuration
+
+### "IP validation failed"
+
+Ensure your IP is:
+- Valid IPv4 (e.g., `192.0.2.50`)
+- Valid IPv6 (e.g., `::1`)
+- Valid CIDR range (e.g., `203.0.113.0/28`)
+
+### "Group not found"
+
+The group name must exist in your `dnsApp.config`. Use `/view groups` in interactive mode to see all available groups.
+
+---
+
+## See Also
+
+- [CLI Reference](/cli-reference): Full command documentation with examples
+- [Installation](/installation): Install and setup
