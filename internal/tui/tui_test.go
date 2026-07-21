@@ -475,3 +475,197 @@ func TestTUI_ClearBackToNormalSearch(t *testing.T) {
 		t.Errorf("Expected search input to be cleared")
 	}
 }
+
+func TestTUI_TabCompletion(t *testing.T) {
+	cfg := &config.Config{
+		NetworkGroupMap: map[string]string{
+			"192.168.1.100": "Servers",
+		},
+	}
+
+	m := New(cfg)
+	m.ready = true
+	m.width = 80
+	m.height = 24
+
+	// Type "/" to enter typeahead mode
+	m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'/'}})
+
+	// Type "hel" to filter to /help command
+	for _, r := range "hel" {
+		m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{r}})
+	}
+
+	// Verify we have a single match for /help
+	if len(m.commandMatches) != 1 {
+		t.Errorf("Expected 1 command match for '/hel', got %d", len(m.commandMatches))
+	}
+	if m.commandMatches[0].Name != "/help" {
+		t.Errorf("Expected /help command, got %q", m.commandMatches[0].Name)
+	}
+
+	// Press Tab to complete
+	m.Update(tea.KeyMsg{Type: tea.KeyTab})
+
+	// Verify input is now "/help " (with trailing space)
+	if m.searchInput.Value() != "/help " {
+		t.Errorf("Expected '/help ' after Tab completion, got %q", m.searchInput.Value())
+	}
+
+	// Verify exited typeahead mode (user can now type subcommand arguments)
+	if m.inTypeaheadMode {
+		t.Errorf("Expected to exit typeahead mode after Tab completion")
+	}
+
+	// Verify contentType is empty (ready to accept command arguments)
+	if m.contentType != "empty" {
+		t.Errorf("Expected contentType 'empty' after Tab completion, got %q", m.contentType)
+	}
+}
+
+func TestTUI_TabCompletion_MultiMatch(t *testing.T) {
+	cfg := &config.Config{
+		NetworkGroupMap: map[string]string{
+			"192.168.1.100": "Servers",
+		},
+	}
+
+	m := New(cfg)
+	m.ready = true
+	m.width = 80
+	m.height = 24
+
+	// Type "/" to enter typeahead mode
+	m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'/'}})
+
+	// Verify all 4 commands are shown
+	if len(m.commandMatches) != 4 {
+		t.Errorf("Expected 4 command matches for '/', got %d", len(m.commandMatches))
+	}
+
+	// Press Tab with multiple matches (completes to selected command)
+	m.Update(tea.KeyMsg{Type: tea.KeyTab})
+
+	// Verify Tab completes to the selected command (/help is default selected)
+	if m.searchInput.Value() != "/help " {
+		t.Errorf("Expected '/help ' (default selected), got %q", m.searchInput.Value())
+	}
+
+	// Verify exited typeahead after completion
+	if m.inTypeaheadMode {
+		t.Errorf("Expected to exit typeahead mode after Tab completion")
+	}
+}
+
+func TestTUI_TabCompletion_OutsideTypeahead(t *testing.T) {
+	cfg := &config.Config{
+		NetworkGroupMap: map[string]string{
+			"192.168.1.100": "Servers",
+		},
+	}
+
+	m := New(cfg)
+	m.ready = true
+	m.width = 80
+	m.height = 24
+
+	// Type "abc" (normal search, no slash command)
+	for _, r := range "abc" {
+		m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{r}})
+	}
+
+	// Verify not in typeahead mode
+	if m.inTypeaheadMode {
+		t.Errorf("Expected NOT to be in typeahead mode for normal search")
+	}
+
+	// Press Tab (should be a no-op, not crash)
+	m.Update(tea.KeyMsg{Type: tea.KeyTab})
+
+	// Verify Tab had no effect outside typeahead
+	if m.searchInput.Value() != "abc" {
+		t.Errorf("Expected Tab to be no-op outside typeahead, got input %q", m.searchInput.Value())
+	}
+}
+
+func TestTUI_TabCompletion_AfterArrowNav(t *testing.T) {
+	cfg := &config.Config{
+		NetworkGroupMap: map[string]string{
+			"192.168.1.100": "Servers",
+		},
+	}
+
+	m := New(cfg)
+	m.ready = true
+	m.width = 80
+	m.height = 24
+
+	// Type "/" to enter typeahead mode
+	m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'/'}})
+
+	// Verify /help is selected (default selectedCommand = 0)
+	if m.commandMatches[0].Name != "/help" {
+		t.Errorf("Expected first match to be /help")
+	}
+
+	// Navigate Down to /exit (assuming order: /help, /exit, /clear, /view)
+	m.Update(tea.KeyMsg{Type: tea.KeyDown})
+
+	// Verify /exit is now selected
+	if m.selectedCommand != 1 {
+		t.Errorf("Expected selectedCommand to be 1 after Down, got %d", m.selectedCommand)
+	}
+
+	// Press Tab to complete the currently selected command (/exit)
+	m.Update(tea.KeyMsg{Type: tea.KeyTab})
+
+	// Verify Tab completed to /exit, not /help
+	if m.searchInput.Value() != "/exit " {
+		t.Errorf("Expected '/exit ' after Tab with Down navigation, got %q", m.searchInput.Value())
+	}
+}
+
+func TestTUI_TabCompletion_SubcommandEntry(t *testing.T) {
+	cfg := &config.Config{
+		NetworkGroupMap: map[string]string{
+			"192.168.1.100": "Servers",
+		},
+	}
+
+	m := New(cfg)
+	m.ready = true
+	m.width = 80
+	m.height = 24
+
+	// Type "/v" to filter to /view
+	for _, r := range "/v" {
+		m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{r}})
+	}
+
+	// Verify /view is in matches
+	if len(m.commandMatches) < 1 {
+		t.Errorf("Expected at least 1 match for '/v'")
+	}
+
+	// Press Tab to complete to "/view "
+	m.Update(tea.KeyMsg{Type: tea.KeyTab})
+
+	if m.searchInput.Value() != "/view " {
+		t.Errorf("Expected '/view ' after Tab, got %q", m.searchInput.Value())
+	}
+
+	// Now type subcommand "groups" without re-filtering
+	for _, r := range "groups" {
+		m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{r}})
+	}
+
+	// Verify user can type subcommand after Tab completion
+	if m.searchInput.Value() != "/view groups" {
+		t.Errorf("Expected '/view groups' after typing subcommand, got %q", m.searchInput.Value())
+	}
+
+	// Verify not back in typeahead mode (so Enter will use the raw typed string)
+	if m.inTypeaheadMode {
+		t.Errorf("Expected NOT to be in typeahead mode after typing subcommand")
+	}
+}

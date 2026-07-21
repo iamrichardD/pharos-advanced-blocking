@@ -194,6 +194,17 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					m.selectedCommand++
 				}
 				return m, nil
+			case tea.KeyTab:
+				// Tab completion: complete to selected command name + space
+				selectedCmd := m.commandMatches[m.selectedCommand]
+				m.searchInput.SetValue(selectedCmd.Name + " ")
+				m.searchInput.CursorEnd()
+				// Exit typeahead after completion so user can type subcommand arguments without re-filtering
+				m.inTypeaheadMode = false
+				m.commandMatches = []SlashCommand{}
+				m.selectedCommand = 0
+				m.contentType = "empty"
+				return m, nil
 			case tea.KeyEnter:
 				// Execute the selected command
 				selectedCmd := m.commandMatches[m.selectedCommand]
@@ -209,10 +220,17 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		// Check if we're in slash command mode
 		if strings.HasPrefix(input, "/") {
-			m.inTypeaheadMode = true
 			m.commandMatches = filterCommands(input)
+			// Only enter typeahead mode if we have matching commands
+			if len(m.commandMatches) > 0 {
+				m.inTypeaheadMode = true
+				m.contentType = "command_list"
+			} else {
+				// No matches - user is typing subcommand args, stay out of typeahead
+				m.inTypeaheadMode = false
+				m.contentType = "empty"
+			}
 			m.selectedCommand = 0
-			m.contentType = "command_list"
 
 			// Handle Enter to execute full command
 			if msg.Type == tea.KeyEnter {
