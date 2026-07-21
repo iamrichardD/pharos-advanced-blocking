@@ -1,0 +1,74 @@
+# ========================================================================
+# Project: Pharos Advanced Blocking
+# Component: CI/CD / Site Deployment
+# File: deploy-site.yml
+# Author: Richard D. (https://github.com/iamrichardd)
+# License: AGPL-3.0 (See LICENSE file for details)
+# Purpose: Deploys the Astro marketing site to GitHub Pages.
+# Last Updated: 2026-07-20
+# ========================================================================
+
+name: "🌐 Deploy Marketing Site"
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'marketing/**'
+      - '.github/workflows/deploy-site.yml'
+  workflow_dispatch:
+
+# Sets permissions of the GITHUB_TOKEN to allow deployment to GitHub Pages
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Allow one concurrent deployment
+concurrency:
+  group: "pages"
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: "🏗️ Build Site"
+    runs-on: ubuntu-latest
+    steps:
+      - name: "🛒 Checkout Code"
+        uses: actions/checkout@v4
+
+      - name: "📦 Setup Node.js"
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+          cache-dependency-path: './marketing/package-lock.json'
+
+      - name: "📦 Install dependencies"
+        run: npm ci
+        working-directory: ./marketing
+
+      - name: "🏗️ Build Site"
+        run: npm run build
+        working-directory: ./marketing
+
+      - name: "📤 Upload Pages Artifact"
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: ./marketing/dist
+
+  deploy:
+    name: "🚀 Deploy to GitHub Pages"
+    needs: build
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+    
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+      
+    steps:
+      - name: "🌐 Deploy"
+        id: deployment
+        uses: actions/deploy-pages@v4
