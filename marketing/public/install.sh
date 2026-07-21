@@ -67,7 +67,7 @@ if [ -z "$VERSION" ]; then
     VERSION="v1.0.0"
 fi
 
-TAR_NAME="pab_${VERSION#v}_${OS}_${ARCH}.tar.gz"
+TAR_NAME="pharos-advanced-blocking_${VERSION#v}_${OS}_${ARCH}.tar.gz"
 CHECKSUMS_NAME="checksums.txt"
 SIGNATURE_NAME="checksums.txt.sig"
 CERT_NAME="checksums.txt.pem"
