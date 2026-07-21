@@ -567,7 +567,7 @@ func (m *Model) renderTable() string {
 
 // renderContent renders content based on the current content type
 func (m *Model) renderContent() string {
-	contentHeight := m.height - 8 // Subtract title(2) + search(3) + footer(2) + borders(1)
+	contentHeight := m.height - 10 // Account for: title(2) + search(3) + footer(1) + border+padding(4)
 	if contentHeight < 3 {
 		contentHeight = 3
 	}
