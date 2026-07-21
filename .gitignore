@@ -9,3 +9,5 @@
 *.log
 /etc/pab/
 /secrets.json
+/pab-test
+/dnsApp.config
