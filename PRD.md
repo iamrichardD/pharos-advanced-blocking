@@ -79,10 +79,11 @@ To protect Technitium API tokens, the CLI will look for secrets in the following
     *   **Requirements**: The CLI will refuse to run and print a warning if this configuration file does not have strict permissions (`chmod 600`), preventing other system users from reading the file contents.
 3.  **Onboarding Wizard**: Prompts to securely paste tokens and saves them directly to `~/.config/pab/secrets.json` with permissions set automatically to `600`.
 
-### 4.3 Plugin Extensibility
-To support the future **Live Status Plugin** (e.g. displaying real-time queries and lease information across multiple nodes), the CLI core will implement:
-*   A directory-based plugin loader (e.g., loading compiled Go plugins `.so` or Javascript WebAssembly extensions from a configured plug-in folder).
-*   Dynamic command registration, allowing loaded plugins to register subcommands (like `pab status`) into Cobra's runtime registry.
+### 4.3 Plugin Extensibility (Phase 6 - Completed)
+To support the future **Live Status Plugin** (e.g. displaying real-time queries and lease information across multiple nodes), the CLI core implements an RPC-like sub-process plugin engine:
+*   A directory-based plugin loader (e.g., scanning `~/.config/pab/plugins` for executables starting with `pab-plugin-`).
+*   Plugins are built as standalone executables (e.g. `pab-plugin-sample`), preserving our CGO-free, statically compiled mandate.
+*   Dynamic command registration: The loader queries the plugin executable (e.g. `./plugin info`) to get JSON metadata describing the plugin and its commands, and dynamically registers these subcommands into Cobra's runtime registry. Execution routes the command directly to the plugin executable.
 
 ---
 

@@ -14,6 +14,7 @@ import (
 
 	"github.com/iamrichardd/pharos-advanced-blocking/internal/client"
 	"github.com/iamrichardd/pharos-advanced-blocking/internal/config"
+	"github.com/iamrichardd/pharos-advanced-blocking/internal/plugin"
 	"github.com/spf13/cobra"
 )
 
@@ -76,6 +77,24 @@ func NewRootCmd(stdin io.Reader, stdout, stderr io.Writer, version, commit, date
 	rootCmd.AddCommand(newMapCmd(global, stdout, stderr))
 	rootCmd.AddCommand(newUnmapCmd(global, stdout, stderr))
 	rootCmd.AddCommand(newDeployCmd(global, stdin, stdout, stderr))
+
+	// Load Plugins
+	configDir, err := os.UserConfigDir()
+	if err == nil {
+		pluginDir := filepath.Join(configDir, "pab", "plugins")
+		manager := plugin.NewManager([]string{pluginDir, "./plugins"})
+		// Best-effort loading, ignore errors
+		_ = manager.LoadPlugins()
+		for _, p := range manager.Plugins {
+			for _, pCmd := range p.RegisterCommands() {
+				// Set output streams for plugin commands if applicable
+				pCmd.SetIn(stdin)
+				pCmd.SetOut(stdout)
+				pCmd.SetErr(stderr)
+				rootCmd.AddCommand(pCmd)
+			}
+		}
+	}
 
 	return rootCmd
 }

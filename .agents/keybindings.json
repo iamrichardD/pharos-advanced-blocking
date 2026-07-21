@@ -1,0 +1,24 @@
+{
+  "bindings": [
+    {
+      "key": "ctrl+shift+t",
+      "command": "claude pab test",
+      "description": "Run unit tests in Podman container"
+    },
+    {
+      "key": "ctrl+shift+b",
+      "command": "claude pab compile",
+      "description": "Build binary for amd64 + arm64 in Podman"
+    },
+    {
+      "key": "ctrl+shift+s",
+      "command": "claude pab snapshot",
+      "description": "Execute GoReleaser snapshot build in Podman"
+    },
+    {
+      "key": "ctrl+shift+r",
+      "command": "claude pab review",
+      "description": "Invoke mob programming review panel for code changes"
+    }
+  ]
+}
