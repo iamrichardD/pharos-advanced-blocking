@@ -70,6 +70,7 @@ func NewRootCmd(stdin io.Reader, stdout, stderr io.Writer, version, commit, date
 	rootCmd.SetIn(stdin)
 	rootCmd.SetOut(stdout)
 	rootCmd.SetErr(stderr)
+	rootCmd.CompletionOptions.HiddenDefaultCmd = true
 
 	rootCmd.PersistentFlags().StringVarP(&global.ConfigFile, "config", "c", "dnsApp.config", "Path to Advanced Blocking configuration file")
 

@@ -18,9 +18,9 @@ func TestValidateConfig(t *testing.T) {
 			name: "valid configuration with IP and CIDR keys",
 			cfg: &Config{
 				NetworkGroupMap: map[string]string{
-					"192.168.1.50":    "default-group",
-					"10.0.0.0/24":     "secure-group",
-					"2001:db8::/32":   "secure-group",
+					"192.168.1.50":   "default-group",
+					"10.0.0.0/24":    "secure-group",
+					"2001:db8::/32":  "secure-group",
 					"fe80::1ff:fe23": "default-group",
 				},
 				Groups: []Group{

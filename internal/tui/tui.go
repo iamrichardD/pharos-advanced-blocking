@@ -44,6 +44,19 @@ var commands = []SlashCommand{
 	},
 }
 
+// ViewSubcommand represents a subcommand for /view
+type ViewSubcommand struct {
+	Name        string
+	Description string
+}
+
+// View subcommands registry
+var viewSubcommands = []ViewSubcommand{
+	{Name: "groups", Description: "List all groups with device counts"},
+	{Name: "group", Description: "Show details for a specific group (followed by group name)"},
+	{Name: "networkGroupMap", Description: "Show all IP-to-group mappings"},
+}
+
 // Brand Colors aligned with Pharos aesthetics
 var (
 	pharosBlue  = lipgloss.Color("#005f87") // Sleek blue
@@ -95,21 +108,23 @@ type ClientEntry struct {
 
 // Model defines the state for the Bubble Tea TUI
 type Model struct {
-	clients         []ClientEntry
-	filtered        []ClientEntry
-	searchInput     textinput.Model
-	width           int
-	height          int
-	err             error
-	ready           bool
-	contentType     string // "table", "help", "status", "empty", "command_list", "view_networkgroupmap", "view_groups", "view_group"
-	contentText     string // For help/status messages
-	commandMatches  []SlashCommand
-	selectedCommand int
-	inTypeaheadMode bool
-	groups          []config.Group // Groups from config
-	viewGroupName   string         // Current group being viewed
-	viewGroupKind   string         // "all", "blocklists", "allowed", "blocked"
+	clients             []ClientEntry
+	filtered            []ClientEntry
+	searchInput         textinput.Model
+	width               int
+	height              int
+	err                 error
+	ready               bool
+	contentType         string // "table", "help", "status", "empty", "command_list", "view_networkgroupmap", "view_groups", "view_group"
+	contentText         string // For help/status messages
+	commandMatches      []SlashCommand
+	selectedCommand     int
+	inTypeaheadMode     bool
+	inPostTabCompletion bool           // Prevent re-entering typeahead after Tab completion
+	groups              []config.Group // Groups from config
+	viewGroupName       string         // Current group being viewed
+	viewGroupKind       string         // "all", "blocklists", "allowed", "blocked"
+	scrollOffset        int            // Current scroll position in viewport
 }
 
 // New creates and initializes a new TUI model, preparing the text input.
@@ -136,16 +151,17 @@ func New(cfg *config.Config) *Model {
 	})
 
 	m := &Model{
-		clients:         clients,
-		searchInput:     ti,
-		ready:           true,
-		contentType:     "empty",
-		contentText:     "",
-		commandMatches:  []SlashCommand{},
-		selectedCommand: 0,
-		inTypeaheadMode: false,
-		viewGroupName:   "",
-		viewGroupKind:   "all",
+		clients:             clients,
+		searchInput:         ti,
+		ready:               true,
+		contentType:         "empty",
+		contentText:         "",
+		commandMatches:      []SlashCommand{},
+		selectedCommand:     0,
+		inTypeaheadMode:     false,
+		inPostTabCompletion: false,
+		viewGroupName:       "",
+		viewGroupKind:       "all",
 	}
 	// Add groups from config
 	if cfg != nil {
@@ -201,6 +217,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.searchInput.CursorEnd()
 				// Exit typeahead after completion so user can type subcommand arguments without re-filtering
 				m.inTypeaheadMode = false
+				m.inPostTabCompletion = true // Prevent re-entering typeahead mode
 				m.commandMatches = []SlashCommand{}
 				m.selectedCommand = 0
 				m.contentType = "empty"
@@ -212,21 +229,48 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		}
 
+		// Handle scrolling in normal (non-typeahead) mode
+		if !m.inTypeaheadMode && m.contentType != "empty" {
+			switch msg.Type {
+			case tea.KeyUp:
+				// Scroll up in viewport
+				if m.scrollOffset > 0 {
+					m.scrollOffset--
+				}
+				return m, nil
+			case tea.KeyDown:
+				// Scroll down in viewport
+				// Conservative limit to prevent overflow
+				if m.scrollOffset < 100 {
+					m.scrollOffset++
+				}
+				return m, nil
+			}
+		}
+
 		// Forward key presses to the search text input component
 		var tiCmd tea.Cmd
 		m.searchInput, tiCmd = m.searchInput.Update(msg)
 
-		input := strings.TrimSpace(m.searchInput.Value())
+		rawInput := m.searchInput.Value()
+		input := strings.TrimSpace(rawInput)
 
 		// Check if we're in slash command mode
 		if strings.HasPrefix(input, "/") {
-			m.commandMatches = filterCommands(input)
-			// Only enter typeahead mode if we have matching commands
-			if len(m.commandMatches) > 0 {
+			// Clear post-Tab-completion flag if user starts a new command (just "/")
+			if input == "/" {
+				m.inPostTabCompletion = false
+			}
+
+			m.commandMatches = filterCommands(rawInput)
+			// Only enter typeahead mode if:
+			// 1. We have matching commands
+			// 2. We're not in post-Tab-completion mode (prevents re-entry when typing subcommand args)
+			if len(m.commandMatches) > 0 && !m.inPostTabCompletion {
 				m.inTypeaheadMode = true
 				m.contentType = "command_list"
 			} else {
-				// No matches - user is typing subcommand args, stay out of typeahead
+				// No matches or in post-Tab-completion mode - user is typing subcommand args, stay out of typeahead
 				m.inTypeaheadMode = false
 				m.contentType = "empty"
 			}
@@ -245,6 +289,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		} else {
 			// Not in slash command mode
 			m.inTypeaheadMode = false
+			m.inPostTabCompletion = false
 			m.commandMatches = []SlashCommand{}
 			m.selectedCommand = 0
 
@@ -254,6 +299,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			} else {
 				m.contentType = "table"
 			}
+			m.scrollOffset = 0
 			m.filterClients()
 		}
 
@@ -298,22 +344,28 @@ func (m *Model) executeCommand(input string) (tea.Model, tea.Cmd) {
 		// Show help text in content area
 		m.contentType = "help"
 		m.contentText = helpText()
+		m.scrollOffset = 0
 		m.searchInput.SetValue("")
 		m.inTypeaheadMode = false
+		m.inPostTabCompletion = false
 		return m, nil
 	case "clear", "c":
 		m.searchInput.SetValue("")
 		m.contentType = "empty"
 		m.contentText = ""
+		m.scrollOffset = 0
 		m.commandMatches = []SlashCommand{}
 		m.selectedCommand = 0
 		m.inTypeaheadMode = false
+		m.inPostTabCompletion = false
 		m.filterClients()
 		return m, nil
 	case "view", "v":
 		m.handleView(args)
+		m.scrollOffset = 0
 		m.searchInput.SetValue("")
 		m.inTypeaheadMode = false
+		m.inPostTabCompletion = false
 		return m, nil
 	default:
 		// Unknown command, clear it
@@ -354,10 +406,10 @@ func (m *Model) handleView(args []string) {
 	}
 }
 
-// findGroup helper finds a group by name
+// findGroup helper finds a group by case-insensitive name match
 func (m *Model) findGroup(name string) *config.Group {
 	for i := range m.groups {
-		if m.groups[i].Name == name {
+		if strings.ToLower(m.groups[i].Name) == strings.ToLower(name) {
 			return &m.groups[i]
 		}
 	}
@@ -456,31 +508,82 @@ func sanitize(items []string) []string {
 }
 
 // filterCommands filters the slash commands based on the input text
+// Handles both top-level commands and view subcommands
 func filterCommands(input string) []SlashCommand {
-	if input == "/" {
+	trimmed := strings.TrimSpace(input)
+
+	if trimmed == "/" {
 		// Show all commands
 		return commands
 	}
 
+	// Check if we're looking for view subcommands
+	// Handle /view with or without space, and /v with space
+	// Examples: "/view", "/view ", "/view g", "/v ", "/v g"
+	// This allows prefix filtering while preventing re-entering typeahead after Tab completion
+	if input == "/view" || strings.HasPrefix(input, "/view ") || strings.HasPrefix(input, "/v ") {
+		return filterViewSubcommands(input)
+	}
+
+	// Filter top-level commands
 	var matches []SlashCommand
-	input = strings.ToLower(input)
+	trimmedLower := strings.ToLower(trimmed)
 
 	for _, cmd := range commands {
 		// Check if command name matches prefix
-		if strings.HasPrefix(strings.ToLower(cmd.Name), input) {
+		if strings.HasPrefix(strings.ToLower(cmd.Name), trimmedLower) {
 			matches = append(matches, cmd)
 			continue
 		}
 
 		// Check if any alias matches prefix
 		for _, alias := range cmd.Aliases {
-			if strings.HasPrefix(strings.ToLower(alias), input) {
+			if strings.HasPrefix(strings.ToLower(alias), trimmedLower) {
 				matches = append(matches, cmd)
 				break
 			}
 		}
 	}
 
+	return matches
+}
+
+// filterViewSubcommands filters view subcommands based on input
+// Input should start with "/view " or "/v " followed by optional prefix text
+// For example: "/view g" matches "/view group" and "/view groups"
+func filterViewSubcommands(input string) []SlashCommand {
+	// Normalize input: handle /view with or without space, and /v with space
+	var prefix string
+	if strings.HasPrefix(input, "/view ") {
+		prefix = strings.TrimPrefix(input, "/view ")
+	} else if strings.HasPrefix(input, "/view") && input != "/view" {
+		// Handle "/view<something>" like "/viewg" or "/view" without space after
+		prefix = strings.TrimPrefix(input, "/view")
+	} else if input == "/view" {
+		// Bare "/view" shows all subcommands
+		prefix = ""
+	} else if strings.HasPrefix(input, "/v ") {
+		prefix = strings.TrimPrefix(input, "/v ")
+	} else if input == "/v" {
+		// Bare "/v" shows all subcommands
+		prefix = ""
+	} else {
+		return []SlashCommand{}
+	}
+
+	// Filter subcommands by prefix
+	var matches []SlashCommand
+	prefixLower := strings.ToLower(prefix)
+	for _, sub := range viewSubcommands {
+		if strings.HasPrefix(strings.ToLower(sub.Name), prefixLower) {
+			fullCmd := "/view " + sub.Name
+			matches = append(matches, SlashCommand{
+				Name:        fullCmd,
+				Aliases:     []string{},
+				Description: sub.Description,
+			})
+		}
+	}
 	return matches
 }
 
@@ -610,15 +713,28 @@ func (m *Model) renderContent() string {
 		content = "Start typing to search by IP or Group, or type /help for commands"
 	}
 
-	// Split content by lines and truncate/pad to fit available height
+	// Split content by lines and apply scroll offset
 	lines := strings.Split(content, "\n")
-	if len(lines) > contentHeight {
-		lines = lines[:contentHeight]
-	} else {
-		// Pad with blank lines to fill available height
-		for len(lines) < contentHeight {
-			lines = append(lines, "")
+
+	// Apply scroll offset to show scrolled view
+	startIdx := m.scrollOffset
+	endIdx := startIdx + contentHeight
+	if endIdx > len(lines) {
+		endIdx = len(lines)
+	}
+	if startIdx >= len(lines) {
+		startIdx = len(lines) - contentHeight
+		if startIdx < 0 {
+			startIdx = 0
 		}
+	}
+	if startIdx > 0 || endIdx < len(lines) {
+		lines = lines[startIdx:endIdx]
+	}
+
+	// Pad with blank lines to fill available height
+	for len(lines) < contentHeight {
+		lines = append(lines, "")
 	}
 
 	return strings.Join(lines, "\n")
@@ -650,7 +766,12 @@ func (m *Model) View() string {
 		Render(m.searchInput.View())
 
 	// Footer help status line (fixed at bottom)
-	footer := footerStyle.Render("ctrl+c / esc: exit | /help: commands | /clear: reset search")
+	footerText := "ctrl+c / esc: exit | /help: commands | /clear: reset search"
+	// Add scroll hint if content is scrollable
+	if m.contentType != "empty" && !m.inTypeaheadMode {
+		footerText += " | ↑↓: scroll"
+	}
+	footer := footerStyle.Render(footerText)
 
 	// Assemble the layout vertically: title, content, search, footer
 	layout := lipgloss.JoinVertical(

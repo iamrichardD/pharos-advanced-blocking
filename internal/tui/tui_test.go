@@ -669,3 +669,140 @@ func TestTUI_TabCompletion_SubcommandEntry(t *testing.T) {
 		t.Errorf("Expected NOT to be in typeahead mode after typing subcommand")
 	}
 }
+
+func TestTUI_ViewSubcommandFiltering_Prefix(t *testing.T) {
+	cfg := &config.Config{
+		NetworkGroupMap: map[string]string{
+			"192.168.1.100": "Servers",
+		},
+	}
+
+	m := New(cfg)
+	m.ready = true
+	m.width = 80
+	m.height = 24
+
+	// Type "/view g" to filter subcommands starting with "g"
+	m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'/'}})
+	for _, r := range "view g" {
+		m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{r}})
+	}
+
+	// Verify we're in typeahead mode
+	if !m.inTypeaheadMode {
+		t.Errorf("Expected to be in typeahead mode after typing /view g")
+	}
+
+	// Verify we have 2 matches: /view group and /view groups
+	if len(m.commandMatches) != 2 {
+		t.Errorf("Expected 2 command matches for '/view g', got %d", len(m.commandMatches))
+	}
+
+	// Verify matches are the group-related subcommands
+	for _, cmd := range m.commandMatches {
+		if !strings.HasPrefix(cmd.Name, "/view group") {
+			t.Errorf("Expected match to start with '/view group', got %q", cmd.Name)
+		}
+	}
+
+	// Verify view renders the filtered subcommands
+	viewOutput := m.View()
+	if !strings.Contains(viewOutput, "/view group") {
+		t.Errorf("Expected /view group in filtered results")
+	}
+}
+
+func TestTUI_ViewSubcommandFiltering_NoMatch(t *testing.T) {
+	cfg := &config.Config{
+		NetworkGroupMap: map[string]string{
+			"192.168.1.100": "Servers",
+		},
+	}
+
+	m := New(cfg)
+	m.ready = true
+	m.width = 80
+	m.height = 24
+
+	// Type "/view xyz" to filter with no matching subcommands
+	m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'/'}})
+	for _, r := range "view xyz" {
+		m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{r}})
+	}
+
+	// Verify we're NOT in typeahead mode (no matches)
+	if m.inTypeaheadMode {
+		t.Errorf("Expected NOT to be in typeahead mode when no subcommands match")
+	}
+
+	// Verify we have 0 matches
+	if len(m.commandMatches) != 0 {
+		t.Errorf("Expected 0 command matches for '/view xyz', got %d", len(m.commandMatches))
+	}
+
+	// Verify contentType is "empty" (no matches shown)
+	if m.contentType != "empty" {
+		t.Errorf("Expected contentType 'empty' when no matches found, got %q", m.contentType)
+	}
+}
+
+func TestTUI_ViewSubcommandAfterTabNoReentry(t *testing.T) {
+	cfg := &config.Config{
+		NetworkGroupMap: map[string]string{
+			"192.168.1.100": "Servers",
+		},
+		Groups: []config.Group{
+			{
+				Name:    "group1",
+				Blocked: []string{"blocked.com"},
+				Allowed: []string{"allowed.com"},
+			},
+		},
+	}
+
+	m := New(cfg)
+	m.ready = true
+	m.width = 80
+	m.height = 24
+
+	// Type "/view " to show all subcommands
+	m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'/'}})
+	for _, r := range "view " {
+		m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{r}})
+	}
+
+	// Verify in typeahead mode with 3 matches
+	if !m.inTypeaheadMode {
+		t.Errorf("Expected to be in typeahead mode after /view ")
+	}
+	if len(m.commandMatches) != 3 {
+		t.Errorf("Expected 3 subcommand matches for '/view ', got %d", len(m.commandMatches))
+	}
+
+	// Press Tab to complete to first match ("/view groups")
+	m.Update(tea.KeyMsg{Type: tea.KeyTab})
+
+	// Verify we exited typeahead mode
+	if m.inTypeaheadMode {
+		t.Errorf("Expected to exit typeahead mode after Tab completion")
+	}
+
+	// Verify search input is now a full command with trailing space
+	currentInput := m.searchInput.Value()
+	if !strings.HasPrefix(currentInput, "/view ") {
+		t.Errorf("Expected input to start with '/view ', got %q", currentInput)
+	}
+
+	// Now type a space (simulating user continuing to type)
+	m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{' '}})
+
+	// Verify we're still NOT in typeahead mode (no re-entry)
+	if m.inTypeaheadMode {
+		t.Errorf("Expected NOT to re-enter typeahead mode after typing space following Tab completion")
+	}
+
+	// Verify contentType remains "empty" (not command_list)
+	if m.contentType != "empty" {
+		t.Errorf("Expected contentType 'empty' after typing space, got %q", m.contentType)
+	}
+}

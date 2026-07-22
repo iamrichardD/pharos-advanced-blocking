@@ -10,10 +10,10 @@ import (
 
 // CommandMeta matches the structure expected by the host's plugin manager.
 type CommandMeta struct {
-	Use         string `json:"use"`
-	Short       string `json:"short"`
-	Long        string `json:"long"`
-	Example     string `json:"example"`
+	Use     string `json:"use"`
+	Short   string `json:"short"`
+	Long    string `json:"long"`
+	Example string `json:"example"`
 }
 
 // PluginMeta matches the structure expected by the host's plugin manager.
@@ -39,7 +39,7 @@ func main() {
 				},
 			},
 		}
-		
+
 		encoder := json.NewEncoder(os.Stdout)
 		if err := encoder.Encode(meta); err != nil {
 			fmt.Fprintf(os.Stderr, "failed to encode metadata: %v\n", err)
@@ -65,7 +65,7 @@ func main() {
 	}
 
 	rootCmd.AddCommand(sampleCmd)
-	
+
 	// Execute without "info" logic interference
 	if err := rootCmd.Execute(); err != nil {
 		os.Exit(1)

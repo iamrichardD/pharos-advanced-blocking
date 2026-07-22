@@ -31,10 +31,10 @@ type SubprocessPlugin struct {
 
 // CommandMeta describes a subcommand provided by the plugin.
 type CommandMeta struct {
-	Use         string `json:"use"`
-	Short       string `json:"short"`
-	Long        string `json:"long"`
-	Example     string `json:"example"`
+	Use     string `json:"use"`
+	Short   string `json:"short"`
+	Long    string `json:"long"`
+	Example string `json:"example"`
 }
 
 // PluginMeta describes the metadata returned by the plugin's 'info' command.
@@ -117,7 +117,7 @@ func (m *Manager) LoadPlugins() error {
 			name := entry.Name()
 			if strings.HasPrefix(name, "pab-plugin-") {
 				path := filepath.Join(dir, name)
-				
+
 				// Ensure it's executable
 				info, err := entry.Info()
 				if err != nil {
