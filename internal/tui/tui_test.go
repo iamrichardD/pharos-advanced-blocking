@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 
@@ -1749,5 +1750,532 @@ func TestContentType_InitialValue(t *testing.T) {
 	// Verify initial contentType is ContentTypeEmpty
 	if m.contentType != ContentTypeEmpty {
 		t.Errorf("Expected initial contentType to be ContentTypeEmpty, got %v", m.contentType)
+	}
+}
+
+// Phase 4: Search Typeahead Tests
+
+func TestTUI_SearchTypeahead_UniqueIPMatch(t *testing.T) {
+	cfg := &config.Config{
+		NetworkGroupMap: map[string]string{
+			"192.0.2.50":    "servers",
+			"192.0.2.51":    "clients",
+			"192.168.1.100": "IoT",
+		},
+		Groups: []config.Group{
+			{Name: "servers", Blocked: []string{}, Allowed: []string{}},
+			{Name: "clients", Blocked: []string{}, Allowed: []string{}},
+			{Name: "IoT", Blocked: []string{}, Allowed: []string{}},
+		},
+	}
+
+	m := New(cfg)
+	m.ready = true
+	m.width = 80
+	m.height = 24
+
+	// Type "192.0.2.50" (unique IP)
+	for _, r := range "192.0.2.50" {
+		m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{r}})
+	}
+
+	// Get search matches
+	matches := m.getSearchMatches("192.0.2.50")
+	if len(matches) == 0 {
+		t.Errorf("expected search matches for '192.0.2.50', got none")
+	}
+
+	// Verify the IP is in the matches
+	found := false
+	for _, match := range matches {
+		if match.Type == "ip" && match.Value == "192.0.2.50" {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Errorf("expected to find '192.0.2.50' in search matches")
+	}
+}
+
+func TestTUI_SearchTypeahead_PartialIPMatch(t *testing.T) {
+	cfg := &config.Config{
+		NetworkGroupMap: map[string]string{
+			"192.0.2.50":    "servers",
+			"192.0.2.51":    "clients",
+			"192.168.1.100": "IoT",
+		},
+		Groups: []config.Group{
+			{Name: "servers", Blocked: []string{}, Allowed: []string{}},
+			{Name: "clients", Blocked: []string{}, Allowed: []string{}},
+			{Name: "IoT", Blocked: []string{}, Allowed: []string{}},
+		},
+	}
+
+	m := New(cfg)
+	m.ready = true
+	m.width = 80
+	m.height = 24
+
+	// Type "192" (prefix match)
+	for _, r := range "192" {
+		m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{r}})
+	}
+
+	// Get search matches for prefix
+	matches := m.getSearchMatches("192")
+	if len(matches) < 2 {
+		t.Errorf("expected at least 2 matches for prefix '192', got %d", len(matches))
+	}
+
+	// Verify multiple IPs are found
+	ipCount := 0
+	for _, match := range matches {
+		if match.Type == "ip" {
+			ipCount++
+		}
+	}
+	if ipCount < 2 {
+		t.Errorf("expected at least 2 IP matches for '192', got %d", ipCount)
+	}
+}
+
+func TestTUI_SearchTypeahead_GroupMatch(t *testing.T) {
+	cfg := &config.Config{
+		NetworkGroupMap: map[string]string{
+			"192.0.2.50": "servers",
+			"192.0.2.51": "security",
+		},
+		Groups: []config.Group{
+			{Name: "servers", Blocked: []string{}, Allowed: []string{}},
+			{Name: "security", Blocked: []string{}, Allowed: []string{}},
+			{Name: "services", Blocked: []string{}, Allowed: []string{}},
+		},
+	}
+
+	m := New(cfg)
+	m.ready = true
+	m.width = 80
+	m.height = 24
+
+	// Type "ser" to match groups like "servers", "security", "services"
+	matches := m.getSearchMatches("ser")
+
+	// Should find multiple group matches
+	hasGroupMatch := false
+	for _, match := range matches {
+		if match.Type == "group" {
+			hasGroupMatch = true
+			break
+		}
+	}
+	if !hasGroupMatch {
+		t.Errorf("expected group match for 'ser', got only IPs")
+	}
+}
+
+func TestTUI_SearchTypeahead_CaseInsensitiveMatch(t *testing.T) {
+	cfg := &config.Config{
+		NetworkGroupMap: map[string]string{
+			"192.0.2.50": "Servers",
+		},
+		Groups: []config.Group{
+			{Name: "Servers", Blocked: []string{}, Allowed: []string{}},
+		},
+	}
+
+	m := New(cfg)
+	m.ready = true
+	m.width = 80
+	m.height = 24
+
+	// Search should be case-insensitive
+	matches1 := m.getSearchMatches("SER")
+	matches2 := m.getSearchMatches("ser")
+
+	if len(matches1) != len(matches2) {
+		t.Errorf("search should be case-insensitive, got %d matches for 'SER', %d for 'ser'",
+			len(matches1), len(matches2))
+	}
+}
+
+func TestTUI_SearchTypeahead_CycleNavigation(t *testing.T) {
+	cfg := &config.Config{
+		NetworkGroupMap: map[string]string{
+			"192.0.2.50": "servers",
+			"192.0.2.51": "clients",
+		},
+		Groups: []config.Group{
+			{Name: "servers", Blocked: []string{}, Allowed: []string{}},
+			{Name: "clients", Blocked: []string{}, Allowed: []string{}},
+			{Name: "security", Blocked: []string{}, Allowed: []string{}},
+		},
+	}
+
+	m := New(cfg)
+	m.ready = true
+	m.width = 80
+	m.height = 24
+
+	// Manually set up typeahead state
+	m.inSearchTypeahead = true
+	m.searchMatches = []SearchMatch{
+		{"ip", "192.0.2.50"},
+		{"group", "servers"},
+		{"group", "clients"},
+	}
+	m.searchMatchIndex = 0
+
+	// Down arrow should increment index
+	m.searchMatchIndex = (m.searchMatchIndex + 1) % len(m.searchMatches)
+	if m.searchMatchIndex != 1 {
+		t.Errorf("expected index 1 after down arrow, got %d", m.searchMatchIndex)
+	}
+
+	// Down arrow again
+	m.searchMatchIndex = (m.searchMatchIndex + 1) % len(m.searchMatches)
+	if m.searchMatchIndex != 2 {
+		t.Errorf("expected index 2 after second down arrow, got %d", m.searchMatchIndex)
+	}
+
+	// Up arrow should decrement index
+	m.searchMatchIndex = (m.searchMatchIndex - 1 + len(m.searchMatches)) % len(m.searchMatches)
+	if m.searchMatchIndex != 1 {
+		t.Errorf("expected index 1 after up arrow, got %d", m.searchMatchIndex)
+	}
+}
+
+func TestTUI_SearchTypeahead_TabActivatesTypeahead(t *testing.T) {
+	cfg := &config.Config{
+		NetworkGroupMap: map[string]string{
+			"192.0.2.50": "servers",
+			"192.0.2.51": "clients",
+		},
+		Groups: []config.Group{
+			{Name: "servers", Blocked: []string{}, Allowed: []string{}},
+			{Name: "clients", Blocked: []string{}, Allowed: []string{}},
+		},
+	}
+
+	m := New(cfg)
+	m.ready = true
+	m.width = 80
+	m.height = 24
+
+	// Type "192" (search input, no slash)
+	for _, r := range "192" {
+		m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{r}})
+	}
+
+	// Verify not in search typeahead yet
+	if m.inSearchTypeahead {
+		t.Errorf("expected NOT to be in search typeahead before Tab")
+	}
+
+	// Press Tab to activate search typeahead
+	m.Update(tea.KeyMsg{Type: tea.KeyTab})
+
+	// Verify now in search typeahead
+	if !m.inSearchTypeahead {
+		t.Errorf("expected to be in search typeahead after Tab")
+	}
+
+	// Verify search matches are populated
+	if len(m.searchMatches) == 0 {
+		t.Errorf("expected search matches to be populated after Tab")
+	}
+}
+
+func TestTUI_SearchTypeahead_EscCancels(t *testing.T) {
+	cfg := &config.Config{
+		NetworkGroupMap: map[string]string{
+			"192.0.2.50": "servers",
+		},
+		Groups: []config.Group{
+			{Name: "servers", Blocked: []string{}, Allowed: []string{}},
+		},
+	}
+
+	m := New(cfg)
+	m.ready = true
+	m.width = 80
+	m.height = 24
+
+	// Set up typeahead state
+	m.inSearchTypeahead = true
+	m.unifiedInput.SetValue("192.0.2.50")
+	m.searchMatches = []SearchMatch{{"ip", "192.0.2.50"}}
+	m.searchMatchIndex = 0
+
+	// Simulate Esc press (manually, since we handle it in Update)
+	m.inSearchTypeahead = false
+	m.searchMatches = []SearchMatch{}
+	m.searchMatchIndex = 0
+	m.unifiedInput.SetValue("")
+
+	// Verify state is cleared
+	if m.inSearchTypeahead {
+		t.Errorf("expected inSearchTypeahead to be false after Esc")
+	}
+	if len(m.searchMatches) != 0 {
+		t.Errorf("expected search matches to be cleared after Esc")
+	}
+	if m.unifiedInput.Value() != "" {
+		t.Errorf("expected input to be cleared after Esc, got '%s'", m.unifiedInput.Value())
+	}
+}
+
+func TestTUI_SearchTypeahead_EnterExecutesSearch(t *testing.T) {
+	cfg := &config.Config{
+		NetworkGroupMap: map[string]string{
+			"192.0.2.50": "servers",
+		},
+		Groups: []config.Group{
+			{Name: "servers", Blocked: []string{}, Allowed: []string{}},
+		},
+	}
+
+	m := New(cfg)
+	m.ready = true
+	m.width = 80
+	m.height = 24
+
+	// Type "192" (search input)
+	for _, r := range "192" {
+		m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{r}})
+	}
+
+	// Press Tab to activate typeahead
+	m.Update(tea.KeyMsg{Type: tea.KeyTab})
+
+	if !m.inSearchTypeahead {
+		t.Errorf("expected to be in search typeahead after Tab")
+	}
+
+	// Press Enter to confirm selection
+	m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+
+	// Verify typeahead is exited
+	if m.inSearchTypeahead {
+		t.Errorf("expected to exit search typeahead after Enter")
+	}
+
+	// Verify content is still table (search results shown)
+	if m.contentType != ContentTypeTable {
+		t.Errorf("expected contentType 'table' after Enter, got %q", m.contentType)
+	}
+}
+
+func TestTUI_SearchTypeahead_TabCycles(t *testing.T) {
+	cfg := &config.Config{
+		NetworkGroupMap: map[string]string{
+			"192.0.2.50": "servers",
+			"192.0.2.51": "clients",
+		},
+		Groups: []config.Group{
+			{Name: "servers", Blocked: []string{}, Allowed: []string{}},
+			{Name: "clients", Blocked: []string{}, Allowed: []string{}},
+		},
+	}
+
+	m := New(cfg)
+	m.ready = true
+	m.width = 80
+	m.height = 24
+
+	// Set up typeahead state manually with multiple matches
+	m.inSearchTypeahead = true
+	m.searchMatches = []SearchMatch{
+		{"ip", "192.0.2.50"},
+		{"ip", "192.0.2.51"},
+		{"group", "servers"},
+	}
+	m.searchMatchIndex = 0
+
+	// Tab should cycle to next match
+	m.searchMatchIndex = (m.searchMatchIndex + 1) % len(m.searchMatches)
+	if m.searchMatchIndex != 1 {
+		t.Errorf("expected index 1 after Tab, got %d", m.searchMatchIndex)
+	}
+
+	// Tab again
+	m.searchMatchIndex = (m.searchMatchIndex + 1) % len(m.searchMatches)
+	if m.searchMatchIndex != 2 {
+		t.Errorf("expected index 2 after second Tab, got %d", m.searchMatchIndex)
+	}
+
+	// Tab again (should cycle back to 0)
+	m.searchMatchIndex = (m.searchMatchIndex + 1) % len(m.searchMatches)
+	if m.searchMatchIndex != 0 {
+		t.Errorf("expected index 0 after third Tab (cycle), got %d", m.searchMatchIndex)
+	}
+}
+
+func TestTUI_SearchTypeahead_RenderList(t *testing.T) {
+	cfg := &config.Config{
+		NetworkGroupMap: map[string]string{
+			"192.0.2.50": "servers",
+		},
+		Groups: []config.Group{
+			{Name: "servers", Blocked: []string{}, Allowed: []string{}},
+		},
+	}
+
+	m := New(cfg)
+	m.ready = true
+	m.width = 80
+	m.height = 24
+
+	// Set up typeahead state
+	m.inSearchTypeahead = true
+	m.searchMatches = []SearchMatch{
+		{"ip", "192.0.2.50"},
+		{"group", "servers"},
+	}
+	m.searchMatchIndex = 0
+
+	// Render typeahead list
+	typeaheadView := m.renderSearchTypeaheadList()
+
+	// Verify output contains expected elements
+	if !strings.Contains(typeaheadView, "Search matches") {
+		t.Errorf("expected 'Search matches' header in typeahead list")
+	}
+	if !strings.Contains(typeaheadView, "192.0.2.50") {
+		t.Errorf("expected IP in typeahead list")
+	}
+	if !strings.Contains(typeaheadView, "servers") {
+		t.Errorf("expected group in typeahead list")
+	}
+	if !strings.Contains(typeaheadView, "[ip]") {
+		t.Errorf("expected type indicator [ip] in typeahead list")
+	}
+	if !strings.Contains(typeaheadView, "[group]") {
+		t.Errorf("expected type indicator [group] in typeahead list")
+	}
+}
+
+// Phase 4: Edge-Case Tests for Search Typeahead
+
+func TestTUI_SearchTypeahead_NoMatches(t *testing.T) {
+	m := New(&config.Config{
+		NetworkGroupMap: map[string]string{
+			"192.0.2.50": "servers",
+		},
+		Groups: []config.Group{
+			{Name: "servers", Blocked: []string{}, Allowed: []string{}},
+		},
+	})
+	m.ready = true
+	m.width = 80
+	m.height = 24
+
+	// Simulate Tab press with prefix that matches nothing
+	m.unifiedInput.SetValue("xyz999")
+	matches := m.getSearchMatches("xyz999")
+
+	if len(matches) != 0 {
+		t.Errorf("expected no matches for 'xyz999', got %d matches", len(matches))
+	}
+
+	// Verify typeahead doesn't activate with zero matches
+	if m.inSearchTypeahead {
+		t.Errorf("expected inSearchTypeahead to remain false when no matches found")
+	}
+}
+
+func TestTUI_SearchTypeahead_LargeResultSet(t *testing.T) {
+	cfg := &config.Config{
+		NetworkGroupMap: make(map[string]string),
+	}
+
+	// Inject 100+ clients into config
+	for i := 0; i < 120; i++ {
+		ip := fmt.Sprintf("192.0.2.%d", (i%256))
+		cfg.NetworkGroupMap[ip] = "servers"
+	}
+
+	m := New(cfg)
+	m.ready = true
+	m.width = 80
+	m.height = 24
+
+	// Search for common prefix
+	matches := m.getSearchMatches("192.0.2")
+
+	if len(matches) < 100 {
+		t.Errorf("expected 100+ matches for '192.0.2', got %d", len(matches))
+	}
+
+	// Verify navigation works with large result set
+	m.inSearchTypeahead = true
+	m.searchMatches = matches
+	m.searchMatchIndex = 0
+
+	// Simulate Down arrow multiple times
+	for i := 0; i < len(matches)-1; i++ {
+		m.searchMatchIndex = (m.searchMatchIndex + 1) % len(m.searchMatches)
+	}
+
+	// Should wrap back to start
+	m.searchMatchIndex = (m.searchMatchIndex + 1) % len(m.searchMatches)
+	if m.searchMatchIndex != 0 {
+		t.Errorf("expected wrap-around to index 0, got %d", m.searchMatchIndex)
+	}
+}
+
+func TestTUI_SearchTypeahead_ModeIntegration(t *testing.T) {
+	m := New(&config.Config{
+		NetworkGroupMap: map[string]string{
+			"192.0.2.50": "servers",
+		},
+		Groups: []config.Group{
+			{Name: "servers", Blocked: []string{}, Allowed: []string{}},
+		},
+	})
+	m.ready = true
+	m.width = 80
+	m.height = 24
+
+	// Start in search mode
+	m.unifiedInput.SetValue("192")
+	m.searchMatches = m.getSearchMatches("192")
+	m.inSearchTypeahead = true
+	m.searchMatchIndex = 0
+
+	if !m.inSearchTypeahead {
+		t.Errorf("expected search typeahead to be active")
+	}
+
+	// Switch to command mode (user clears and types "/")
+	m.unifiedInput.SetValue("/view")
+	parsed := ParseUnifiedInput(m.unifiedInput.Value())
+
+	if parsed.Type != InputTypeCommand {
+		t.Errorf("expected command mode, got search mode")
+	}
+
+	// Verify command typeahead can activate without search typeahead interference
+	m.inSearchTypeahead = false  // Exit search mode
+	m.searchMatches = []SearchMatch{}
+	m.commandMatches = filterCommands("/view")
+	m.inTypeaheadMode = true
+
+	if m.inTypeaheadMode && m.inSearchTypeahead {
+		t.Errorf("expected only command typeahead active, got both modes")
+	}
+
+	// Switch back to search mode
+	m.inTypeaheadMode = false
+	m.unifiedInput.SetValue("servers")
+	m.searchMatches = m.getSearchMatches("servers")
+	m.inSearchTypeahead = true
+
+	if m.inSearchTypeahead && m.inTypeaheadMode {
+		t.Errorf("expected only search typeahead active, got both modes")
+	}
+
+	if !m.inSearchTypeahead {
+		t.Errorf("expected search typeahead to be active after switch back")
 	}
 }

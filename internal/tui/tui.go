@@ -59,6 +59,12 @@ type SlashCommand struct {
 	Description string
 }
 
+// SearchMatch represents a match in search mode (IP or group)
+type SearchMatch struct {
+	Type  string // "ip" or "group"
+	Value string // "192.0.2.50" or "servers"
+}
+
 // Slash command registry with all available commands
 var commands = []SlashCommand{
 	{
@@ -175,6 +181,10 @@ type Model struct {
 	commandHistory      []CommandEvent // Append-only history log
 	historyScroll       int            // Scroll position in history view
 	firstRun            bool           // Track first-time user for welcome banner
+	// Search typeahead (Phase 4)
+	searchMatches     []SearchMatch // Matching IPs/groups
+	searchMatchIndex  int           // Currently selected match
+	inSearchTypeahead bool          // True when Tab was pressed in search mode
 }
 
 // New creates and initializes a new TUI model, preparing the text input.
@@ -215,6 +225,10 @@ func New(cfg *config.Config) *Model {
 		commandHistory:      []CommandEvent{},
 		historyScroll:       0,
 		firstRun:            true,
+		// Search typeahead initialization
+		searchMatches:    []SearchMatch{},
+		searchMatchIndex: 0,
+		inSearchTypeahead: false,
 	}
 	// Add groups from config
 	if cfg != nil {
@@ -262,7 +276,50 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, tea.Quit
 		}
 
-		// Handle navigation in typeahead mode
+		// Handle navigation in search typeahead mode
+		if m.inSearchTypeahead && len(m.searchMatches) > 0 {
+			switch msg.Type {
+			case tea.KeyUp:
+				if m.searchMatchIndex > 0 {
+					m.searchMatchIndex--
+				} else {
+					// Wrap around to end
+					m.searchMatchIndex = len(m.searchMatches) - 1
+				}
+				m.unifiedInput.SetValue(m.searchMatches[m.searchMatchIndex].Value)
+				return m, nil
+			case tea.KeyDown:
+				if m.searchMatchIndex < len(m.searchMatches)-1 {
+					m.searchMatchIndex++
+				} else {
+					// Wrap around to beginning
+					m.searchMatchIndex = 0
+				}
+				m.unifiedInput.SetValue(m.searchMatches[m.searchMatchIndex].Value)
+				return m, nil
+			case tea.KeyTab:
+				// Tab to cycle to next match
+				m.searchMatchIndex = (m.searchMatchIndex + 1) % len(m.searchMatches)
+				m.unifiedInput.SetValue(m.searchMatches[m.searchMatchIndex].Value)
+				return m, nil
+			case tea.KeyEnter:
+				// User confirmed selection, exit search typeahead
+				m.inSearchTypeahead = false
+				m.searchMatches = []SearchMatch{}
+				m.searchMatchIndex = 0
+				// Fall through to normal search execution
+				break
+			case tea.KeyEsc:
+				// Exit search typeahead without executing
+				m.inSearchTypeahead = false
+				m.searchMatches = []SearchMatch{}
+				m.searchMatchIndex = 0
+				m.unifiedInput.SetValue("")
+				return m, nil
+			}
+		}
+
+		// Handle navigation in command typeahead mode
 		if m.inTypeaheadMode && len(m.commandMatches) > 0 {
 			switch msg.Type {
 			case tea.KeyUp:
@@ -302,7 +359,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 
 		// Handle scrolling in normal (non-typeahead) mode
-		if !m.inTypeaheadMode {
+		if !m.inTypeaheadMode && !m.inSearchTypeahead {
 			switch msg.Type {
 			case tea.KeyUp:
 				// Scroll up in history if we have history, otherwise in regular content
@@ -325,6 +382,28 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					m.scrollOffset++
 				}
 				return m, nil
+			}
+		}
+
+		// Handle Tab key for search typeahead before forwarding to textinput
+		if msg.Type == tea.KeyTab {
+			rawInput := m.unifiedInput.Value()
+			input := strings.TrimSpace(rawInput)
+
+			// Check if we're in search mode (no leading /)
+			if !strings.HasPrefix(input, "/") && input != "" {
+				// SEARCH MODE: Tab completion for IPs/groups
+				if !m.inSearchTypeahead {
+					// First Tab press - activate typeahead
+					m.searchMatches = m.getSearchMatches(input)
+					if len(m.searchMatches) > 0 {
+						m.inSearchTypeahead = true
+						m.searchMatchIndex = 0
+						// Update input with first match
+						m.unifiedInput.SetValue(m.searchMatches[0].Value)
+						return m, nil
+					}
+				}
 			}
 		}
 
@@ -377,6 +456,12 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.commandMatches = []SlashCommand{}
 			m.selectedCommand = 0
 
+			// Exit search typeahead if user is typing new search
+			if !m.inSearchTypeahead {
+				m.searchMatches = []SearchMatch{}
+				m.searchMatchIndex = 0
+			}
+
 			// Update filter results dynamically on every keystroke
 			m.contentType = ContentTypeTable
 			m.scrollOffset = 0
@@ -388,6 +473,9 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.inPostTabCompletion = false
 			m.commandMatches = []SlashCommand{}
 			m.selectedCommand = 0
+			m.inSearchTypeahead = false
+			m.searchMatches = []SearchMatch{}
+			m.searchMatchIndex = 0
 			m.contentType = ContentTypeEmpty
 		}
 
@@ -780,6 +868,39 @@ func (m *Model) filterClients() {
 	m.filtered = filtered
 }
 
+// getSearchMatches gathers searchable entities (IPs and group names) matching the prefix
+func (m *Model) getSearchMatches(prefix string) []SearchMatch {
+	var matches []SearchMatch
+	prefixLower := strings.ToLower(prefix)
+
+	// Map to track unique values and avoid duplicates
+	seen := make(map[string]bool)
+
+	// Collect unique IPs from clients
+	for _, c := range m.clients {
+		if strings.Contains(strings.ToLower(c.IP), prefixLower) {
+			key := c.IP
+			if !seen[key] {
+				matches = append(matches, SearchMatch{"ip", c.IP})
+				seen[key] = true
+			}
+		}
+	}
+
+	// Search group names
+	for _, g := range m.groups {
+		if strings.Contains(strings.ToLower(g.Name), prefixLower) {
+			key := g.Name
+			if !seen[key] {
+				matches = append(matches, SearchMatch{"group", g.Name})
+				seen[key] = true
+			}
+		}
+	}
+
+	return matches
+}
+
 // helpText returns the help message for available commands
 func helpText() string {
 	return `Available Commands:
@@ -793,6 +914,13 @@ View Commands:
   /view group <name>       Show group details (all domains)
   /view group <name> blocklists  Show blocked domains
   /view group <name> allowed     Show allowed domains
+
+Keyboard Shortcuts:
+  Tab                      Autocomplete commands (type /v, press Tab)
+  Tab (in search)          Autocomplete IPs or groups (type 192, press Tab)
+  ↑↓                       Navigate search results or command matches
+  Enter                    Execute search or command
+  Esc                      Clear current input
 
 Tips:
   • Start typing to search by IP or Group
@@ -885,6 +1013,33 @@ func (m *Model) renderHistory() string {
 	return output.String()
 }
 
+// renderSearchTypeaheadList renders the search typeahead matches
+func (m *Model) renderSearchTypeaheadList() string {
+	if !m.inSearchTypeahead || len(m.searchMatches) == 0 {
+		return ""
+	}
+
+	var b strings.Builder
+	b.WriteString("\n")
+	b.WriteString(headerStyle.Render("Search matches:") + "\n")
+
+	for i, match := range m.searchMatches {
+		prefix := "  "
+		if i == m.searchMatchIndex {
+			prefix = "→ " // Highlight selected match
+		}
+
+		matchType := fmt.Sprintf("[%s]", match.Type)
+		typeStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
+
+		line := fmt.Sprintf("%s%-40s %s", prefix, match.Value, typeStyle.Render(matchType))
+		b.WriteString(line + "\n")
+	}
+
+	b.WriteString(footerStyle.Render("↑↓: navigate | Tab: cycle | Enter: select | Esc: cancel") + "\n")
+	return b.String()
+}
+
 // renderContent renders content based on the current content type
 func (m *Model) renderContent() string {
 	contentHeight := m.height - 10 // Account for: title(2) + search(3) + footer(1) + border+padding(4)
@@ -963,12 +1118,17 @@ func (m *Model) View() string {
 			Foreground(lipgloss.Color("8")).
 			Render("Quick start: Type to search by IP/Group, or /help for commands")
 
+		tabHint := lipgloss.NewStyle().
+			Foreground(lipgloss.Color("8")).
+			Render("Tip: Press Tab in search to autocomplete IPs or groups")
+
 		welcomeBox := lipgloss.JoinVertical(
 			lipgloss.Top,
 			welcome,
 			subtitle,
 			"",
 			"Tip: Press / to see all available commands",
+			tabHint,
 		)
 
 		searchBox := lipgloss.NewStyle().
@@ -1016,24 +1176,33 @@ func (m *Model) View() string {
 		MarginTop(1).
 		Render(m.unifiedInput.View())
 
+	// Search typeahead list (if active)
+	var typeaheadView string
+	if m.inSearchTypeahead {
+		typeaheadView = m.renderSearchTypeaheadList()
+	}
+
 	// Footer help status line (fixed at bottom)
 	footerText := "ctrl+c / esc: exit | /help: commands | /clear: reset"
 	// Add scroll hint if we have history
-	if len(m.commandHistory) > 0 && !m.inTypeaheadMode {
+	if len(m.commandHistory) > 0 && !m.inTypeaheadMode && !m.inSearchTypeahead {
 		footerText += " | ↑↓: scroll through history"
 		footerText += fmt.Sprintf(" | (%d commands in history)", len(m.commandHistory))
-	} else if m.contentType != ContentTypeEmpty && !m.inTypeaheadMode {
+	} else if m.contentType != ContentTypeEmpty && !m.inTypeaheadMode && !m.inSearchTypeahead {
 		footerText += " | ↑↓: scroll"
 	}
 	footer := footerStyle.Render(footerText)
 
-	// Assemble the layout vertically: title, content, search, footer
+	// Assemble the layout vertically: title, content, search, typeahead (if active), footer
+	layoutParts := []string{title, contentBox, searchBox}
+	if typeaheadView != "" {
+		layoutParts = append(layoutParts, typeaheadView)
+	}
+	layoutParts = append(layoutParts, footer)
+
 	layout := lipgloss.JoinVertical(
 		lipgloss.Left,
-		title,
-		contentBox,
-		searchBox,
-		footer,
+		layoutParts...,
 	)
 
 	// Apply responsive padding and borders to wrap the layout
