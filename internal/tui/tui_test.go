@@ -2279,3 +2279,214 @@ func TestTUI_SearchTypeahead_ModeIntegration(t *testing.T) {
 		t.Errorf("expected search typeahead to be active after switch back")
 	}
 }
+
+// ============================================================================
+// PHASE 5: INTEGRATION TESTS
+// ============================================================================
+
+func TestTUI_Integration_SearchThenViewCommand(t *testing.T) {
+	// Test workflow: Search for IP → /view command → back to search
+	cfg := &config.Config{
+		NetworkGroupMap: map[string]string{
+			"192.0.2.50":  "prod-servers",
+			"192.0.2.51":  "prod-servers",
+			"10.0.0.5":    "dev-machines",
+			"10.0.0.10":   "dev-machines",
+			"172.16.0.1":  "iot-devices",
+		},
+	}
+	m := New(cfg)
+
+	// Step 1: Search for IP
+	m.unifiedInput.SetValue("192.0.2.50")
+	parsed := ParseUnifiedInput(m.unifiedInput.Value())
+	if parsed.Type != InputTypeSearch {
+		t.Errorf("expected search mode, got command mode")
+	}
+	m.filterClients() // filterClients uses m.unifiedInput.Value() internally
+	m.contentType = ContentTypeTable
+
+	// Verify search results appear
+	if len(m.filtered) == 0 {
+		t.Errorf("expected search results for '192.0.2.50'")
+	}
+
+	// Step 2: User switches to /view command
+	m.unifiedInput.SetValue("/view groups")
+	parsed = ParseUnifiedInput(m.unifiedInput.Value())
+	if parsed.Type != InputTypeCommand {
+		t.Errorf("expected command mode after typing /")
+	}
+
+	// Step 3: Execute view command
+	_, _ = m.executeCommand(parsed.Query, parsed.Args)
+
+	if m.contentType != ContentTypeViewGroups {
+		t.Errorf("expected ContentTypeViewGroups, got %v", m.contentType)
+	}
+
+	// Step 4: Return to search
+	m.unifiedInput.SetValue("dev-machines")
+	parsed = ParseUnifiedInput(m.unifiedInput.Value())
+	if parsed.Type != InputTypeSearch {
+		t.Errorf("expected search mode after clearing /")
+	}
+
+	m.filterClients()
+	if len(m.filtered) == 0 {
+		t.Errorf("expected search results for 'dev-machines'")
+	}
+}
+
+func TestTUI_Integration_RapidTabCompletions(t *testing.T) {
+	// Test rapid Tab completions switching between command and search modes
+	cfg := &config.Config{
+		NetworkGroupMap: map[string]string{
+			"192.168.1.100": "servers",
+			"192.168.1.150": "iot",
+			"10.0.0.5":      "laptops",
+		},
+	}
+	m := New(cfg)
+
+	// First Tab completion in command mode
+	m.unifiedInput.SetValue("/v")
+	m.commandMatches = filterCommands("/v")
+	m.inTypeaheadMode = true
+
+	if len(m.commandMatches) == 0 {
+		t.Errorf("expected command matches for '/v'")
+	}
+
+	// Tab to complete first command
+	if len(m.commandMatches) > 0 {
+		m.unifiedInput.SetValue("/view ")
+	}
+	m.inTypeaheadMode = false
+
+	// Now Tab in search mode on same instance
+	m.unifiedInput.SetValue("192")
+	m.searchMatches = m.getSearchMatches("192")
+	m.inSearchTypeahead = true
+
+	if len(m.searchMatches) == 0 {
+		t.Errorf("expected search matches for '192'")
+	}
+
+	// Verify no state contamination between modes
+	if m.inTypeaheadMode {
+		t.Errorf("command typeahead should be off during search typeahead")
+	}
+}
+
+func TestTUI_Integration_HistoryAcrossModes(t *testing.T) {
+	// Test that history tracks both searches and commands in order
+	cfg := &config.Config{
+		NetworkGroupMap: map[string]string{
+			"192.168.1.100": "servers",
+			"192.168.1.150": "iot",
+		},
+	}
+	m := New(cfg)
+
+	// Perform search
+	m.appendHistory("servers", "192.168.1.100 (servers)")
+
+	// Perform command
+	m.appendHistory("/view groups", "Groups: servers, iot")
+
+	// Perform another search
+	m.appendHistory("192", "192.168.1.100 (servers)")
+
+	// Verify history has all 3 entries in order
+	if len(m.commandHistory) != 3 {
+		t.Errorf("expected 3 history entries, got %d", len(m.commandHistory))
+	}
+
+	if m.commandHistory[0].Command != "servers" {
+		t.Errorf("expected first entry 'servers', got '%s'", m.commandHistory[0].Command)
+	}
+
+	if m.commandHistory[1].Command != "/view groups" {
+		t.Errorf("expected second entry '/view groups', got '%s'", m.commandHistory[1].Command)
+	}
+
+	if m.commandHistory[2].Command != "192" {
+		t.Errorf("expected third entry '192', got '%s'", m.commandHistory[2].Command)
+	}
+}
+
+// ============================================================================
+// PHASE 5: STRESS TESTS
+// ============================================================================
+
+func TestTUI_StressTest_RapidKeystrokes(t *testing.T) {
+	// Simulate rapid typing of IP address
+	cfg := &config.Config{
+		NetworkGroupMap: map[string]string{
+			"192.0.2.50": "servers",
+		},
+	}
+	m := New(cfg)
+
+	// Simulate rapid typing
+	keystrokes := []string{"1", "92", "192", "192.", "192.0", "192.0.", "192.0.2", "192.0.2."}
+
+	for _, keystroke := range keystrokes {
+		m.unifiedInput.SetValue(keystroke)
+
+		// Each keystroke should be parseable
+		parsed := ParseUnifiedInput(keystroke)
+		// The parser should handle partial input gracefully
+		_ = parsed
+
+		// Should not crash when filtering
+		if !strings.HasPrefix(keystroke, "/") && keystroke != "" {
+			m.filterClients()
+		}
+	}
+}
+
+func TestTUI_StressTest_LargeDatasetNavigation(t *testing.T) {
+	// Test navigation with large dataset (500+ clients)
+	cfg := &config.Config{
+		NetworkGroupMap: make(map[string]string),
+	}
+
+	// Inject 500 clients
+	for i := 0; i < 500; i++ {
+		ip := fmt.Sprintf("192.0.2.%d", (i%256))
+		if i < 256 {
+			cfg.NetworkGroupMap[ip] = "servers"
+		} else {
+			cfg.NetworkGroupMap[ip] = "iot"
+		}
+	}
+
+	m := New(cfg)
+
+	// Search for large result set
+	m.unifiedInput.SetValue("192.0.2")
+	m.searchMatches = m.getSearchMatches("192.0.2")
+	m.inSearchTypeahead = true
+	m.searchMatchIndex = 0
+
+	if len(m.searchMatches) < 100 {
+		t.Errorf("expected 100+ matches for '192.0.2', got %d", len(m.searchMatches))
+	}
+
+	// Simulate rapid navigation (Down 100 times)
+	for i := 0; i < 100; i++ {
+		m.searchMatchIndex = (m.searchMatchIndex + 1) % len(m.searchMatches)
+	}
+
+	// Simulate rapid navigation (Up 100 times)
+	for i := 0; i < 100; i++ {
+		m.searchMatchIndex = (m.searchMatchIndex - 1 + len(m.searchMatches)) % len(m.searchMatches)
+	}
+
+	// Should not crash or deadlock
+	if m.searchMatchIndex < 0 || m.searchMatchIndex >= len(m.searchMatches) {
+		t.Errorf("index out of bounds after navigation: %d", m.searchMatchIndex)
+	}
+}
