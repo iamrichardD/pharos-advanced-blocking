@@ -765,9 +765,9 @@ func filterCommands(input string) []SlashCommand {
 
 	// Check if we're looking for view subcommands
 	// Handle /view with or without space, and /v with space
-	// Examples: "/view", "/view ", "/view g", "/v ", "/v g"
+	// Examples: "/view", "/view ", "/view g", "/v", "/v ", "/v g"
 	// This allows prefix filtering while preventing re-entering typeahead after Tab completion
-	if input == "/view" || strings.HasPrefix(input, "/view ") || strings.HasPrefix(input, "/v ") {
+	if input == "/view" || strings.HasPrefix(input, "/view ") || input == "/v" || strings.HasPrefix(input, "/v ") {
 		return filterViewSubcommands(input)
 	}
 
