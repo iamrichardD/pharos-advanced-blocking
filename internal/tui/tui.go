@@ -1199,9 +1199,13 @@ func (m *Model) View() string {
 	}
 
 	// Dynamic content area in the middle
-	// If we have history, show it; otherwise show regular content
+	// Prioritize explicit content types (Help, ViewGroups, etc.) over history
 	var renderedContent string
-	if len(m.commandHistory) > 0 {
+	if m.contentType != ContentTypeEmpty && m.contentType != ContentTypeTable {
+		// Help, ViewGroups, ViewGroup, etc. should be shown as primary content
+		renderedContent = m.renderContent()
+	} else if len(m.commandHistory) > 0 {
+		// Only show history if we're in table/empty mode
 		renderedContent = m.renderHistory()
 	} else {
 		renderedContent = m.renderContent()
