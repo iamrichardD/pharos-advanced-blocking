@@ -303,12 +303,25 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.unifiedInput.SetValue(m.searchMatches[m.searchMatchIndex].Value)
 				return m, nil
 			case tea.KeyEnter:
-				// User confirmed selection, exit search typeahead
+				// User confirmed selection, execute search immediately
+				// Step 1: Exit typeahead mode and clear state
 				m.inSearchTypeahead = false
 				m.searchMatches = []SearchMatch{}
 				m.searchMatchIndex = 0
-				// Fall through to normal search execution
-				break
+
+				// Step 2: Execute search with the populated input value
+				m.contentType = ContentTypeTable
+				m.scrollOffset = 0
+				m.filterClients()
+
+				// Step 3: Clear input and log to history
+				searchQuery := m.unifiedInput.Value()
+				m.unifiedInput.SetValue("")
+				if searchQuery != "" {
+					m.appendHistory(searchQuery, "")
+				}
+
+				return m, nil
 			case tea.KeyEsc:
 				// Exit search typeahead without executing
 				m.inSearchTypeahead = false
@@ -1036,7 +1049,6 @@ func (m *Model) renderSearchTypeaheadList() string {
 		b.WriteString(line + "\n")
 	}
 
-	b.WriteString(footerStyle.Render("↑↓: navigate | Tab: cycle | Enter: select | Esc: cancel") + "\n")
 	return b.String()
 }
 
@@ -1166,8 +1178,20 @@ func (m *Model) View() string {
 		renderedContent = m.renderContent()
 	}
 
+	// Calculate available height for content box to prevent overflow
+	// Account for: title(2 lines) + search box(2 lines) + footer(1 line) + margins/padding(2 lines)
+	availableHeight := m.height - 7
+	if m.inSearchTypeahead {
+		// Reserve additional space for typeahead list when active
+		availableHeight = m.height - 12
+	}
+	if availableHeight < 3 {
+		availableHeight = 3
+	}
+
 	contentBox := lipgloss.NewStyle().
 		Padding(0, 1).
+		MaxHeight(availableHeight).
 		Render(renderedContent)
 
 	// Search box (fixed above footer)
@@ -1183,13 +1207,23 @@ func (m *Model) View() string {
 	}
 
 	// Footer help status line (fixed at bottom)
-	footerText := "ctrl+c / esc: exit | /help: commands | /clear: reset"
-	// Add scroll hint if we have history
-	if len(m.commandHistory) > 0 && !m.inTypeaheadMode && !m.inSearchTypeahead {
-		footerText += " | ↑↓: scroll through history"
-		footerText += fmt.Sprintf(" | (%d commands in history)", len(m.commandHistory))
-	} else if m.contentType != ContentTypeEmpty && !m.inTypeaheadMode && !m.inSearchTypeahead {
-		footerText += " | ↑↓: scroll"
+	var footerText string
+	if m.inSearchTypeahead {
+		// Show search typeahead navigation hints
+		footerText = "↑↓: navigate | Tab: cycle | Enter: select | Esc: cancel"
+	} else if m.inTypeaheadMode {
+		// Show command typeahead navigation hints
+		footerText = "↑↓: navigate | Tab: complete | Enter: execute | Esc: cancel"
+	} else {
+		// Show default hints
+		footerText = "ctrl+c / esc: exit | /help: commands | /clear: reset"
+		// Add scroll hint if we have history
+		if len(m.commandHistory) > 0 {
+			footerText += " | ↑↓: scroll through history"
+			footerText += fmt.Sprintf(" | (%d commands in history)", len(m.commandHistory))
+		} else if m.contentType != ContentTypeEmpty {
+			footerText += " | ↑↓: scroll"
+		}
 	}
 	footer := footerStyle.Render(footerText)
 
