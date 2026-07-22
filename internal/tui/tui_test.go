@@ -2852,6 +2852,23 @@ func TestE2E_TypeaheadViewGroups(t *testing.T) {
 	if !strings.Contains(viewOutput, "/view groups") {
 		t.Errorf("Verification failed: expected '/view groups' in View() history")
 	}
+
+	// FIX #3: Visual regression tests for input duplication
+	// Verify welcome banner is dismissed
+	if m.firstRun {
+		t.Errorf("CRITICAL: firstRun should be false after view groups command")
+	}
+
+	// Verify welcome banner NOT in output
+	if strings.Contains(viewOutput, "Welcome to Pharos") {
+		t.Errorf("CRITICAL: Welcome banner should not render with groups content")
+	}
+
+	// Verify input field appears once (not doubled)
+	inputFieldCount := strings.Count(viewOutput, "Search or type")
+	if inputFieldCount != 1 {
+		t.Errorf("CRITICAL: Input field appears %d times (expected 1) in TypeaheadViewGroups", inputFieldCount)
+	}
 }
 
 // TestE2E_DirectViewCommand tests executing /view groups by typing it directly
@@ -2934,6 +2951,23 @@ func TestE2E_DirectViewCommand(t *testing.T) {
 	if !strings.Contains(viewOutput, "/view groups") {
 		t.Errorf("Verification failed: expected '/view groups' in history view")
 	}
+
+	// FIX #3: Visual regression tests for input duplication
+	// Verify welcome banner is dismissed
+	if m.firstRun {
+		t.Errorf("CRITICAL: firstRun should be false after direct view command")
+	}
+
+	// Verify welcome banner NOT in output
+	if strings.Contains(viewOutput, "Welcome to Pharos") {
+		t.Errorf("CRITICAL: Welcome banner should not render with direct view content")
+	}
+
+	// Verify input field appears once (not doubled)
+	inputFieldCount := strings.Count(viewOutput, "Search or type")
+	if inputFieldCount != 1 {
+		t.Errorf("CRITICAL: Input field appears %d times (expected 1) in DirectViewCommand", inputFieldCount)
+	}
 }
 
 // TestE2E_HelpCommandViaBubbleTeaUpdate tests /help execution through
@@ -3002,5 +3036,27 @@ func TestE2E_HelpCommandViaBubbleTeaUpdate(t *testing.T) {
 	}
 	if !strings.Contains(viewOutput, "/help") {
 		t.Errorf("Verification failed: expected '/help' command in history view")
+	}
+
+	// FIX #3: Visual regression tests for help text and input duplication
+	// Verify welcome banner is dismissed
+	if m.firstRun {
+		t.Errorf("CRITICAL: firstRun should be false after help command")
+	}
+
+	// Verify welcome banner NOT in output
+	if strings.Contains(viewOutput, "Welcome to Pharos") {
+		t.Errorf("CRITICAL: Welcome banner should not render with help content")
+	}
+
+	// Verify help text IS in output
+	if !strings.Contains(viewOutput, "Available Commands") {
+		t.Errorf("CRITICAL: Help text missing from output")
+	}
+
+	// Verify input field appears once (not doubled)
+	inputFieldCount := strings.Count(viewOutput, "Search or type")
+	if inputFieldCount != 1 {
+		t.Errorf("CRITICAL: Input field appears %d times (expected 1)", inputFieldCount)
 	}
 }

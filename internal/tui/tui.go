@@ -539,6 +539,9 @@ func (m *Model) executeCommand(cmd string, args []string) (tea.Model, tea.Cmd) {
 		input += " " + strings.Join(args, " ")
 	}
 
+	// FIX #1: Dismiss welcome banner for ANY command execution
+	m.firstRun = false
+
 	switch cmdLower {
 	case "exit", "quit":
 		return m, tea.Quit
@@ -581,6 +584,7 @@ func (m *Model) executeCommand(cmd string, args []string) (tea.Model, tea.Cmd) {
 		// Unknown command, clear it
 		m.unifiedInput.SetValue("")
 		m.inTypeaheadMode = false
+		m.firstRun = false // Dismiss first-run banner when a command is executed
 		return m, nil
 	}
 }
