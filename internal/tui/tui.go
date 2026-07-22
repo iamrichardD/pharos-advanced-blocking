@@ -14,6 +14,14 @@ import (
 	"github.com/iamrichardd/pharos-advanced-blocking/internal/config"
 )
 
+// max returns the maximum of two integers
+func max(a, b int) int {
+	if a > b {
+		return a
+	}
+	return b
+}
+
 // ContentType represents the type of content being rendered
 type ContentType int
 
@@ -1150,10 +1158,20 @@ func (m *Model) View() string {
 
 		footer := footerStyle.Render("ctrl+c / esc: exit | /help: commands | /clear: reset")
 
+		// Calculate spacer to push search and footer to bottom
+		// Estimate: title(1) + welcome(6) + search(1) + footer(1) + padding(2)
+		// Total used ~11 lines, so spacer = height - 11
+		spacerHeight := max(0, m.height-11)
+		spacer := ""
+		if spacerHeight > 1 {
+			spacer = lipgloss.NewStyle().Height(spacerHeight).Render("")
+		}
+
 		layout := lipgloss.JoinVertical(
-			lipgloss.Left,
+			lipgloss.Top,
 			title,
 			welcomeBox,
+			spacer,
 			searchBox,
 			footer,
 		)
@@ -1227,15 +1245,33 @@ func (m *Model) View() string {
 	}
 	footer := footerStyle.Render(footerText)
 
-	// Assemble the layout vertically: title, content, search, typeahead (if active), footer
-	layoutParts := []string{title, contentBox, searchBox}
+	// Calculate spacer to push search and footer to bottom
+	// Estimate: title(1) + content(varies) + search(2) + footer(1) + padding(2)
+	// Conservative calculation: height - (title + search + footer + padding)
+	spacerHeight := max(0, m.height-10)
+	if m.inSearchTypeahead && typeaheadView != "" {
+		// Reserve less space if typeahead is active
+		spacerHeight = max(0, m.height-15)
+	}
+
+	spacer := ""
+	if spacerHeight > 1 {
+		spacer = lipgloss.NewStyle().Height(spacerHeight).Render("")
+	}
+
+	// Assemble the layout vertically: title, content, spacer, search, typeahead (if active), footer
+	layoutParts := []string{title, contentBox}
+	if spacer != "" {
+		layoutParts = append(layoutParts, spacer)
+	}
+	layoutParts = append(layoutParts, searchBox)
 	if typeaheadView != "" {
 		layoutParts = append(layoutParts, typeaheadView)
 	}
 	layoutParts = append(layoutParts, footer)
 
 	layout := lipgloss.JoinVertical(
-		lipgloss.Left,
+		lipgloss.Top,
 		layoutParts...,
 	)
 
