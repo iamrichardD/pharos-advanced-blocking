@@ -2746,3 +2746,261 @@ func TestRegression_HelpCommandExecution(t *testing.T) {
 		t.Errorf("Expected help text content in rendered view")
 	}
 }
+
+// ============================================================================
+// END-TO-END TESTS FOR CRITICAL BUG FIX (#3)
+// ============================================================================
+// These tests verify that the command parsing bug is fixed:
+// When Enter is pressed after typeahead completes, the command must be
+// properly parsed into (cmd, args) before execution.
+
+// TestE2E_TypeaheadViewGroups tests the complete flow of typeahead completion
+// and execution: Type /v → Tab → Type groups → Enter → Groups render
+func TestE2E_TypeaheadViewGroups(t *testing.T) {
+	cfg := &config.Config{
+		NetworkGroupMap: map[string]string{
+			"192.168.1.100": "Servers",
+			"192.168.1.150": "IoT",
+		},
+		Groups: []config.Group{
+			{
+				Name:    "Servers",
+				Blocked: []string{"blocked.com"},
+				Allowed: []string{"allowed.com"},
+			},
+			{
+				Name:    "IoT",
+				Blocked: []string{"iot-blocked.com"},
+				Allowed: []string{"iot-allowed.com"},
+			},
+		},
+	}
+
+	m := New(cfg)
+	m.ready = true
+	m.width = 100
+	m.height = 30
+
+	// STEP 1: Type "/v" to enter typeahead mode
+	m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'/'}})
+	m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'v'}})
+
+	if !m.inTypeaheadMode {
+		t.Fatalf("Step 1 failed: expected to be in typeahead mode after /v")
+	}
+	if m.contentType != ContentTypeCommandList {
+		t.Fatalf("Step 1 failed: expected contentType CommandList, got %v", m.contentType)
+	}
+
+	// STEP 2: Find the /view groups command in typeahead and press Enter
+	// (When we typed "/v", the filter shows view subcommands)
+	if len(m.commandMatches) == 0 {
+		t.Fatalf("Step 2 failed: no command matches for /v")
+	}
+
+	// Find and select /view groups
+	groupsIdx := -1
+	for i, cmd := range m.commandMatches {
+		if cmd.Name == "/view groups" {
+			groupsIdx = i
+			break
+		}
+	}
+
+	if groupsIdx == -1 {
+		t.Fatalf("Step 2 failed: '/view groups' not found in matches, got: %v", m.commandMatches)
+	}
+
+	// Navigate to groups if needed
+	for i := m.selectedCommand; i < groupsIdx; i++ {
+		m.Update(tea.KeyMsg{Type: tea.KeyDown})
+	}
+
+	// STEP 3: Press Enter to execute /view groups via typeahead
+	m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+
+	// VERIFICATION: Command was added to history
+	if len(m.commandHistory) == 0 {
+		t.Errorf("Verification failed: command not in history")
+	} else if m.commandHistory[0].Command != "/view groups" {
+		t.Errorf("Verification failed: expected '/view groups' in history, got %q", m.commandHistory[0].Command)
+	}
+
+	// VERIFICATION: Input was cleared
+	if m.unifiedInput.Value() != "" {
+		t.Errorf("Verification failed: input not cleared, got %q", m.unifiedInput.Value())
+	}
+
+	// VERIFICATION: Content type changed to view groups
+	if m.contentType != ContentTypeViewGroups {
+		t.Errorf("Verification failed: expected contentType ViewGroups, got %v", m.contentType)
+	}
+
+	// VERIFICATION: History has output with groups
+	if len(m.commandHistory) > 0 && !strings.Contains(m.commandHistory[0].Output, "Servers") {
+		t.Errorf("Verification failed: expected 'Servers' group in history output")
+	}
+
+	// VERIFICATION: View() renders the groups
+	viewOutput := m.View()
+	if !strings.Contains(viewOutput, "Servers") {
+		t.Errorf("Verification failed: expected 'Servers' to render in View()")
+	}
+	if !strings.Contains(viewOutput, "IoT") {
+		t.Errorf("Verification failed: expected 'IoT' to render in View()")
+	}
+	if !strings.Contains(viewOutput, "/view groups") {
+		t.Errorf("Verification failed: expected '/view groups' in View() history")
+	}
+}
+
+// TestE2E_DirectViewCommand tests executing /view groups by typing it directly
+// (without using Tab completion)
+func TestE2E_DirectViewCommand(t *testing.T) {
+	cfg := &config.Config{
+		NetworkGroupMap: map[string]string{
+			"192.168.1.100": "Servers",
+			"192.168.1.150": "IoT",
+		},
+		Groups: []config.Group{
+			{
+				Name:    "Servers",
+				Blocked: []string{"malware.com"},
+				Allowed: []string{"trusted.com"},
+			},
+			{
+				Name:    "IoT",
+				Blocked: []string{"iot-malware.com"},
+				Allowed: []string{"iot-trusted.com"},
+			},
+		},
+	}
+
+	m := New(cfg)
+	m.ready = true
+	m.width = 100
+	m.height = 30
+
+	// STEP 1: Type "/view groups" directly
+	for _, r := range "/view groups" {
+		m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{r}})
+	}
+
+	if m.unifiedInput.Value() != "/view groups" {
+		t.Fatalf("Step 1 failed: expected input '/view groups', got %q", m.unifiedInput.Value())
+	}
+
+	// STEP 2: Press Enter to execute the command
+	m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+
+	// VERIFICATION: Command was added to history (CRITICAL FIX TEST)
+	if len(m.commandHistory) == 0 {
+		t.Fatalf("CRITICAL BUG: command not in history - executeCommand silently failed")
+	}
+	if m.commandHistory[0].Command != "/view groups" {
+		t.Errorf("Verification failed: expected '/view groups' in history, got %q", m.commandHistory[0].Command)
+	}
+
+	// VERIFICATION: Input was cleared
+	if m.unifiedInput.Value() != "" {
+		t.Errorf("Verification failed: input not cleared, got %q", m.unifiedInput.Value())
+	}
+
+	// VERIFICATION: Content type changed to view groups (CRITICAL FIX TEST)
+	if m.contentType != ContentTypeViewGroups {
+		t.Fatalf("CRITICAL BUG: contentType not updated - got %v, expected ViewGroups", m.contentType)
+	}
+
+	// VERIFICATION: History has output with group names
+	if len(m.commandHistory) > 0 {
+		output := m.commandHistory[0].Output
+		if output == "" {
+			t.Errorf("Verification failed: expected non-empty output in history")
+		}
+		if !strings.Contains(output, "Servers") && !strings.Contains(output, "IoT") {
+			t.Errorf("Verification failed: expected group names in history output, got: %s", output)
+		}
+	}
+
+	// VERIFICATION: View() renders the groups with all details
+	viewOutput := m.View()
+	if !strings.Contains(viewOutput, "Servers") {
+		t.Fatalf("CRITICAL BUG: Groups not rendering in View() - Servers missing")
+	}
+	if !strings.Contains(viewOutput, "IoT") {
+		t.Errorf("Verification failed: expected 'IoT' in View()")
+	}
+	// Verify history shows the command
+	if !strings.Contains(viewOutput, "/view groups") {
+		t.Errorf("Verification failed: expected '/view groups' in history view")
+	}
+}
+
+// TestE2E_HelpCommandViaBubbleTeaUpdate tests /help execution through
+// typeahead selection (simulating user navigation and Enter press)
+func TestE2E_HelpCommandViaBubbleTeaUpdate(t *testing.T) {
+	cfg := testConfigWithIPs(map[string]string{
+		"192.168.1.100": "Servers",
+	})
+
+	m := New(cfg)
+	m.ready = true
+	m.width = 100
+	m.height = 30
+
+	// STEP 1: Type "/" to enter typeahead
+	m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'/'}})
+
+	if !m.inTypeaheadMode {
+		t.Fatalf("Step 1 failed: not in typeahead mode after /")
+	}
+	if len(m.commandMatches) == 0 {
+		t.Fatalf("Step 1 failed: no command matches")
+	}
+
+	// STEP 2: Navigate to /help (default is first match which should be /help)
+	if m.commandMatches[0].Name != "/help" {
+		// If /help is not first, navigate down to find it
+		for i, cmd := range m.commandMatches {
+			if cmd.Name == "/help" {
+				m.selectedCommand = i
+				break
+			}
+		}
+	}
+
+	// STEP 3: Press Enter to execute /help via typeahead
+	m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+
+	// VERIFICATION: Help command was added to history
+	if len(m.commandHistory) == 0 {
+		t.Fatalf("CRITICAL BUG: /help not in history after typeahead Enter")
+	}
+	if m.commandHistory[0].Command != "/help" {
+		t.Errorf("Verification failed: expected '/help' in history, got %q", m.commandHistory[0].Command)
+	}
+
+	// VERIFICATION: Input was cleared
+	if m.unifiedInput.Value() != "" {
+		t.Errorf("Verification failed: input not cleared after command, got %q", m.unifiedInput.Value())
+	}
+
+	// VERIFICATION: Content type is Help
+	if m.contentType != ContentTypeHelp {
+		t.Errorf("Verification failed: expected contentType Help, got %v", m.contentType)
+	}
+
+	// VERIFICATION: Help text is in history
+	if len(m.commandHistory) > 0 && !strings.Contains(m.commandHistory[0].Output, "Available Commands") {
+		t.Errorf("Verification failed: expected help text in history output")
+	}
+
+	// VERIFICATION: View() renders help text
+	viewOutput := m.View()
+	if !strings.Contains(viewOutput, "Available Commands") {
+		t.Fatalf("CRITICAL BUG: Help text not rendering in View()")
+	}
+	if !strings.Contains(viewOutput, "/help") {
+		t.Errorf("Verification failed: expected '/help' command in history view")
+	}
+}

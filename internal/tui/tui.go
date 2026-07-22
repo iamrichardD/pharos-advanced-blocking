@@ -463,7 +463,14 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if msg.Type == tea.KeyEnter {
 				if len(m.commandMatches) > 0 {
 					selectedCmd := m.commandMatches[m.selectedCommand]
-					return m.executeCommand(selectedCmd.Name, []string{})
+					// Parse the command name to extract the command and any args
+					parts := strings.Fields(selectedCmd.Name)
+					cmd := strings.TrimPrefix(parts[0], "/")
+					args := []string{}
+					if len(parts) > 1 {
+						args = parts[1:]
+					}
+					return m.executeCommand(cmd, args)
 				}
 				// Try to execute what was typed as-is
 				trimmed := strings.TrimPrefix(input, "/")
