@@ -9,15 +9,116 @@ import (
 	"github.com/iamrichardd/pharos-advanced-blocking/internal/config"
 )
 
-func TestTUI_Lifecycle(t *testing.T) {
-	// 1. Create a decoupled configuration structure
+// ============================================================================
+// TEST CONFIG HELPERS
+// ============================================================================
+
+// testConfigWithIPs creates a test config with provided IP→group mappings
+func testConfigWithIPs(ips map[string]string) *config.Config {
 	cfg := &config.Config{
-		NetworkGroupMap: map[string]string{
-			"192.168.1.100": "Servers",
-			"192.168.1.150": "IoT",
-			"10.0.0.5":      "Laptops",
+		NetworkGroupMap: ips,
+		Groups: []config.Group{
+			{Name: "servers"},
+			{Name: "iot"},
+			{Name: "security"},
 		},
 	}
+	return cfg
+}
+
+// testConfigEmpty creates a test config with no clients
+func testConfigEmpty() *config.Config {
+	return &config.Config{
+		NetworkGroupMap: make(map[string]string),
+		Groups: []config.Group{
+			{Name: "servers"},
+			{Name: "iot"},
+		},
+	}
+}
+
+// mockConfig creates a default test config for most tests
+func mockConfig() *config.Config {
+	return testConfigWithIPs(map[string]string{
+		"192.0.2.50":  "servers",
+		"192.0.2.51":  "iot",
+		"192.0.2.100": "security",
+		"10.0.0.1":    "servers",
+		"172.16.0.1":  "iot",
+	})
+}
+
+// ============================================================================
+// ASSERTION HELPERS
+// ============================================================================
+
+func assertContentType(t *testing.T, m *Model, expected ContentType, msg string) {
+	t.Helper()
+	if m.contentType != expected {
+		t.Errorf("%s: expected contentType %v, got %v", msg, expected, m.contentType)
+	}
+}
+
+func assertFilteredCount(t *testing.T, m *Model, expected int, msg string) {
+	t.Helper()
+	if len(m.filtered) != expected {
+		t.Errorf("%s: expected %d filtered results, got %d", msg, expected, len(m.filtered))
+	}
+}
+
+func assertHistoryLength(t *testing.T, m *Model, expected int, msg string) {
+	t.Helper()
+	if len(m.commandHistory) != expected {
+		t.Errorf("%s: expected %d history entries, got %d", msg, expected, len(m.commandHistory))
+	}
+}
+
+func assertHistoryEntry(t *testing.T, m *Model, index int, expectedCmd string, msg string) {
+	t.Helper()
+	if index >= len(m.commandHistory) {
+		t.Errorf("%s: history index %d out of bounds (len=%d)", msg, index, len(m.commandHistory))
+		return
+	}
+	if m.commandHistory[index].Command != expectedCmd {
+		t.Errorf("%s: expected history[%d]='%s', got '%s'", msg, index, expectedCmd, m.commandHistory[index].Command)
+	}
+}
+
+func assertTypeaheadActive(t *testing.T, m *Model, expected bool, msg string) {
+	t.Helper()
+	if m.inTypeaheadMode != expected {
+		t.Errorf("%s: expected inTypeaheadMode=%v, got %v", msg, expected, m.inTypeaheadMode)
+	}
+}
+
+func assertSearchTypeaheadActive(t *testing.T, m *Model, expected bool, msg string) {
+	t.Helper()
+	if m.inSearchTypeahead != expected {
+		t.Errorf("%s: expected inSearchTypeahead=%v, got %v", msg, expected, m.inSearchTypeahead)
+	}
+}
+
+func assertInputValue(t *testing.T, m *Model, expected string, msg string) {
+	t.Helper()
+	if m.unifiedInput.Value() != expected {
+		t.Errorf("%s: expected input '%s', got '%s'", msg, expected, m.unifiedInput.Value())
+	}
+}
+
+func assertNoError(t *testing.T, err error, msg string) {
+	t.Helper()
+	if err != nil {
+		t.Errorf("%s: unexpected error: %v", msg, err)
+	}
+}
+
+func TestTUI_Lifecycle(t *testing.T) {
+	// 1. Create a decoupled configuration structure
+	cfg := testConfigWithIPs(map[string]string{
+		"192.168.1.100": "Servers",
+		"192.168.1.150": "IoT",
+		"10.0.0.5":      "Laptops",
+	})
 
 	// 2. Initialize the Bubble Tea Model
 	m := New(cfg)
@@ -98,11 +199,9 @@ func TestTUI_Lifecycle(t *testing.T) {
 }
 
 func TestTUI_HelpCommand(t *testing.T) {
-	cfg := &config.Config{
-		NetworkGroupMap: map[string]string{
-			"192.168.1.100": "Servers",
-		},
-	}
+	cfg := testConfigWithIPs(map[string]string{
+		"192.168.1.100": "Servers",
+	})
 
 	m := New(cfg)
 	m.ready = true
@@ -140,12 +239,10 @@ func TestTUI_HelpCommand(t *testing.T) {
 }
 
 func TestTUI_ClearCommand(t *testing.T) {
-	cfg := &config.Config{
-		NetworkGroupMap: map[string]string{
-			"192.168.1.100": "Servers",
-			"192.168.1.150": "IoT",
-		},
-	}
+	cfg := testConfigWithIPs(map[string]string{
+		"192.168.1.100": "Servers",
+		"192.168.1.150": "IoT",
+	})
 
 	m := New(cfg)
 	m.ready = true
@@ -189,11 +286,9 @@ func TestTUI_ClearCommand(t *testing.T) {
 }
 
 func TestTUI_SlashCommandTypeahead(t *testing.T) {
-	cfg := &config.Config{
-		NetworkGroupMap: map[string]string{
-			"192.168.1.100": "Servers",
-		},
-	}
+	cfg := testConfigWithIPs(map[string]string{
+		"192.168.1.100": "Servers",
+	})
 
 	m := New(cfg)
 	m.ready = true
@@ -229,11 +324,9 @@ func TestTUI_SlashCommandTypeahead(t *testing.T) {
 }
 
 func TestTUI_CommandFiltering_Help(t *testing.T) {
-	cfg := &config.Config{
-		NetworkGroupMap: map[string]string{
-			"192.168.1.100": "Servers",
-		},
-	}
+	cfg := testConfigWithIPs(map[string]string{
+		"192.168.1.100": "Servers",
+	})
 
 	m := New(cfg)
 	m.ready = true
@@ -260,11 +353,10 @@ func TestTUI_CommandFiltering_Help(t *testing.T) {
 }
 
 func TestTUI_CommandFiltering_Exit(t *testing.T) {
-	cfg := &config.Config{
-		NetworkGroupMap: map[string]string{
-			"192.168.1.100": "Servers",
-		},
-	}
+	cfg := testConfigWithIPs(map[string]string{
+		"192.168.1.100": "Servers",
+		
+	})
 
 	m := New(cfg)
 	m.ready = true
@@ -285,11 +377,10 @@ func TestTUI_CommandFiltering_Exit(t *testing.T) {
 }
 
 func TestTUI_CommandFiltering_Alias(t *testing.T) {
-	cfg := &config.Config{
-		NetworkGroupMap: map[string]string{
-			"192.168.1.100": "Servers",
-		},
-	}
+	cfg := testConfigWithIPs(map[string]string{
+		"192.168.1.100": "Servers",
+		
+	})
 
 	m := New(cfg)
 	m.ready = true
@@ -310,11 +401,10 @@ func TestTUI_CommandFiltering_Alias(t *testing.T) {
 }
 
 func TestTUI_ArrowNavigation_Down(t *testing.T) {
-	cfg := &config.Config{
-		NetworkGroupMap: map[string]string{
-			"192.168.1.100": "Servers",
-		},
-	}
+	cfg := testConfigWithIPs(map[string]string{
+		"192.168.1.100": "Servers",
+		
+	})
 
 	m := New(cfg)
 	m.ready = true
@@ -347,11 +437,10 @@ func TestTUI_ArrowNavigation_Down(t *testing.T) {
 }
 
 func TestTUI_ArrowNavigation_Up(t *testing.T) {
-	cfg := &config.Config{
-		NetworkGroupMap: map[string]string{
-			"192.168.1.100": "Servers",
-		},
-	}
+	cfg := testConfigWithIPs(map[string]string{
+		"192.168.1.100": "Servers",
+		
+	})
 
 	m := New(cfg)
 	m.ready = true
@@ -379,12 +468,11 @@ func TestTUI_ArrowNavigation_Up(t *testing.T) {
 }
 
 func TestTUI_ExitTypeaheadWithRegularText(t *testing.T) {
-	cfg := &config.Config{
-		NetworkGroupMap: map[string]string{
-			"192.168.1.100": "Servers",
+	cfg := testConfigWithIPs(map[string]string{
+		"192.168.1.100": "Servers",
 			"192.168.1.150": "IoT",
-		},
-	}
+		
+	})
 
 	m := New(cfg)
 	m.ready = true
@@ -413,11 +501,10 @@ func TestTUI_ExitTypeaheadWithRegularText(t *testing.T) {
 }
 
 func TestTUI_CommandListHighlight(t *testing.T) {
-	cfg := &config.Config{
-		NetworkGroupMap: map[string]string{
-			"192.168.1.100": "Servers",
-		},
-	}
+	cfg := testConfigWithIPs(map[string]string{
+		"192.168.1.100": "Servers",
+		
+	})
 
 	m := New(cfg)
 	m.ready = true
@@ -441,11 +528,10 @@ func TestTUI_CommandListHighlight(t *testing.T) {
 }
 
 func TestTUI_ClearBackToNormalSearch(t *testing.T) {
-	cfg := &config.Config{
-		NetworkGroupMap: map[string]string{
-			"192.168.1.100": "Servers",
-		},
-	}
+	cfg := testConfigWithIPs(map[string]string{
+		"192.168.1.100": "Servers",
+		
+	})
 
 	m := New(cfg)
 	m.ready = true
@@ -478,11 +564,10 @@ func TestTUI_ClearBackToNormalSearch(t *testing.T) {
 }
 
 func TestTUI_TabCompletion(t *testing.T) {
-	cfg := &config.Config{
-		NetworkGroupMap: map[string]string{
-			"192.168.1.100": "Servers",
-		},
-	}
+	cfg := testConfigWithIPs(map[string]string{
+		"192.168.1.100": "Servers",
+		
+	})
 
 	m := New(cfg)
 	m.ready = true
@@ -525,11 +610,10 @@ func TestTUI_TabCompletion(t *testing.T) {
 }
 
 func TestTUI_TabCompletion_MultiMatch(t *testing.T) {
-	cfg := &config.Config{
-		NetworkGroupMap: map[string]string{
-			"192.168.1.100": "Servers",
-		},
-	}
+	cfg := testConfigWithIPs(map[string]string{
+		"192.168.1.100": "Servers",
+		
+	})
 
 	m := New(cfg)
 	m.ready = true
@@ -559,11 +643,10 @@ func TestTUI_TabCompletion_MultiMatch(t *testing.T) {
 }
 
 func TestTUI_TabCompletion_OutsideTypeahead(t *testing.T) {
-	cfg := &config.Config{
-		NetworkGroupMap: map[string]string{
-			"192.168.1.100": "Servers",
-		},
-	}
+	cfg := testConfigWithIPs(map[string]string{
+		"192.168.1.100": "Servers",
+		
+	})
 
 	m := New(cfg)
 	m.ready = true
@@ -590,11 +673,10 @@ func TestTUI_TabCompletion_OutsideTypeahead(t *testing.T) {
 }
 
 func TestTUI_TabCompletion_AfterArrowNav(t *testing.T) {
-	cfg := &config.Config{
-		NetworkGroupMap: map[string]string{
-			"192.168.1.100": "Servers",
-		},
-	}
+	cfg := testConfigWithIPs(map[string]string{
+		"192.168.1.100": "Servers",
+		
+	})
 
 	m := New(cfg)
 	m.ready = true
@@ -627,11 +709,10 @@ func TestTUI_TabCompletion_AfterArrowNav(t *testing.T) {
 }
 
 func TestTUI_TabCompletion_SubcommandEntry(t *testing.T) {
-	cfg := &config.Config{
-		NetworkGroupMap: map[string]string{
-			"192.168.1.100": "Servers",
-		},
-	}
+	cfg := testConfigWithIPs(map[string]string{
+		"192.168.1.100": "Servers",
+		
+	})
 
 	m := New(cfg)
 	m.ready = true
@@ -672,11 +753,10 @@ func TestTUI_TabCompletion_SubcommandEntry(t *testing.T) {
 }
 
 func TestTUI_ViewSubcommandFiltering_Prefix(t *testing.T) {
-	cfg := &config.Config{
-		NetworkGroupMap: map[string]string{
-			"192.168.1.100": "Servers",
-		},
-	}
+	cfg := testConfigWithIPs(map[string]string{
+		"192.168.1.100": "Servers",
+		
+	})
 
 	m := New(cfg)
 	m.ready = true
@@ -714,11 +794,10 @@ func TestTUI_ViewSubcommandFiltering_Prefix(t *testing.T) {
 }
 
 func TestTUI_ViewSubcommandFiltering_NoMatch(t *testing.T) {
-	cfg := &config.Config{
-		NetworkGroupMap: map[string]string{
-			"192.168.1.100": "Servers",
-		},
-	}
+	cfg := testConfigWithIPs(map[string]string{
+		"192.168.1.100": "Servers",
+		
+	})
 
 	m := New(cfg)
 	m.ready = true
@@ -811,11 +890,10 @@ func TestTUI_ViewSubcommandAfterTabNoReentry(t *testing.T) {
 // History tests start here
 
 func TestTUI_HistoryAppend_SingleCommand(t *testing.T) {
-	cfg := &config.Config{
-		NetworkGroupMap: map[string]string{
-			"192.168.1.100": "Servers",
-		},
-	}
+	cfg := testConfigWithIPs(map[string]string{
+		"192.168.1.100": "Servers",
+		
+	})
 
 	m := New(cfg)
 	m.ready = true
@@ -899,11 +977,10 @@ func TestTUI_HistoryAppend_MultipleCommands(t *testing.T) {
 }
 
 func TestTUI_HistoryScroll_UpDown(t *testing.T) {
-	cfg := &config.Config{
-		NetworkGroupMap: map[string]string{
-			"192.168.1.100": "Servers",
-		},
-	}
+	cfg := testConfigWithIPs(map[string]string{
+		"192.168.1.100": "Servers",
+		
+	})
 
 	m := New(cfg)
 	m.ready = true
@@ -940,11 +1017,10 @@ func TestTUI_HistoryScroll_UpDown(t *testing.T) {
 }
 
 func TestTUI_HistoryScroll_Bounds(t *testing.T) {
-	cfg := &config.Config{
-		NetworkGroupMap: map[string]string{
-			"192.168.1.100": "Servers",
-		},
-	}
+	cfg := testConfigWithIPs(map[string]string{
+		"192.168.1.100": "Servers",
+		
+	})
 
 	m := New(cfg)
 	m.ready = true
@@ -974,11 +1050,10 @@ func TestTUI_HistoryScroll_Bounds(t *testing.T) {
 }
 
 func TestTUI_HistoryClear_ResetOnClear(t *testing.T) {
-	cfg := &config.Config{
-		NetworkGroupMap: map[string]string{
-			"192.168.1.100": "Servers",
-		},
-	}
+	cfg := testConfigWithIPs(map[string]string{
+		"192.168.1.100": "Servers",
+		
+	})
 
 	m := New(cfg)
 	m.ready = true
@@ -1021,11 +1096,10 @@ func TestTUI_HistoryClear_ResetOnClear(t *testing.T) {
 }
 
 func TestTUI_HistoryRender_TimestampFormat(t *testing.T) {
-	cfg := &config.Config{
-		NetworkGroupMap: map[string]string{
-			"192.168.1.100": "Servers",
-		},
-	}
+	cfg := testConfigWithIPs(map[string]string{
+		"192.168.1.100": "Servers",
+		
+	})
 
 	m := New(cfg)
 	m.ready = true
@@ -1058,11 +1132,10 @@ func TestTUI_HistoryRender_TimestampFormat(t *testing.T) {
 }
 
 func TestTUI_HistoryRender_EmptyHistory(t *testing.T) {
-	cfg := &config.Config{
-		NetworkGroupMap: map[string]string{
-			"192.168.1.100": "Servers",
-		},
-	}
+	cfg := testConfigWithIPs(map[string]string{
+		"192.168.1.100": "Servers",
+		
+	})
 
 	m := New(cfg)
 	m.ready = true
@@ -1122,11 +1195,10 @@ func TestTUI_HistoryRender_AfterCommand(t *testing.T) {
 }
 
 func TestTUI_HistoryScroll_ResetOnNewCommand(t *testing.T) {
-	cfg := &config.Config{
-		NetworkGroupMap: map[string]string{
-			"192.168.1.100": "Servers",
-		},
-	}
+	cfg := testConfigWithIPs(map[string]string{
+		"192.168.1.100": "Servers",
+		
+	})
 
 	m := New(cfg)
 	m.ready = true
@@ -1161,11 +1233,10 @@ func TestTUI_HistoryScroll_ResetOnNewCommand(t *testing.T) {
 }
 
 func TestTUI_HistoryFooterDisplay(t *testing.T) {
-	cfg := &config.Config{
-		NetworkGroupMap: map[string]string{
-			"192.168.1.100": "Servers",
-		},
-	}
+	cfg := testConfigWithIPs(map[string]string{
+		"192.168.1.100": "Servers",
+		
+	})
 
 	m := New(cfg)
 	m.ready = true
@@ -1206,121 +1277,103 @@ func TestTUI_HistoryFooterDisplay(t *testing.T) {
 
 // Parser tests start here
 
-func TestParseUnifiedInput_EmptyInput(t *testing.T) {
-	result := ParseUnifiedInput("")
-	if result.Type != InputTypeEmpty {
-		t.Errorf("expected InputTypeEmpty, got %v", result.Type)
+func TestParseUnifiedInput(t *testing.T) {
+	tests := []struct {
+		name          string
+		input         string
+		expectedType  InputType
+		expectedQuery string
+		expectedArgs  []string
+	}{
+		{
+			name:         "empty input",
+			input:        "",
+			expectedType: InputTypeEmpty,
+		},
+		{
+			name:          "implicit search",
+			input:         "kids",
+			expectedType:  InputTypeSearch,
+			expectedQuery: "kids",
+		},
+		{
+			name:          "command with args",
+			input:         "/view groups",
+			expectedType:  InputTypeCommand,
+			expectedQuery: "view",
+			expectedArgs:  []string{"groups"},
+		},
+		{
+			name:          "case insensitive command",
+			input:         "/VIEW GROUPS",
+			expectedType:  InputTypeCommand,
+			expectedQuery: "view",
+			expectedArgs:  []string{"GROUPS"},
+		},
+		{
+			name:          "search with IP",
+			input:         "192.0.2.50",
+			expectedType:  InputTypeSearch,
+			expectedQuery: "192.0.2.50",
+		},
+		{
+			name:          "command only slash",
+			input:         "/",
+			expectedType:  InputTypeCommand,
+			expectedQuery: "",
+		},
+		{
+			name:          "search with spaces preserved",
+			input:         "   search term   ",
+			expectedType:  InputTypeSearch,
+			expectedQuery: "search term",
+		},
+		{
+			name:          "command with multiple args",
+			input:         "/view group MyGroup blocklists",
+			expectedType:  InputTypeCommand,
+			expectedQuery: "view",
+			expectedArgs:  []string{"group", "MyGroup", "blocklists"},
+		},
+		{
+			name:          "search with leading zero",
+			input:         "192.168.001.1",
+			expectedType:  InputTypeSearch,
+			expectedQuery: "192.168.001.1",
+		},
 	}
-	if result.Query != "" {
-		t.Errorf("expected empty query, got %q", result.Query)
-	}
-	if len(result.Args) != 0 {
-		t.Errorf("expected empty args, got %v", result.Args)
-	}
-}
 
-func TestParseUnifiedInput_ImplicitSearch(t *testing.T) {
-	result := ParseUnifiedInput("kids")
-	if result.Type != InputTypeSearch {
-		t.Errorf("expected InputTypeSearch, got %v", result.Type)
-	}
-	if result.Query != "kids" {
-		t.Errorf("expected query 'kids', got %q", result.Query)
-	}
-	if len(result.Args) != 0 {
-		t.Errorf("expected empty args for search, got %v", result.Args)
-	}
-}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := ParseUnifiedInput(tt.input)
 
-func TestParseUnifiedInput_Command(t *testing.T) {
-	result := ParseUnifiedInput("/view groups")
-	if result.Type != InputTypeCommand {
-		t.Errorf("expected InputTypeCommand, got %v", result.Type)
-	}
-	if result.Query != "view" {
-		t.Errorf("expected query 'view', got %q", result.Query)
-	}
-	if len(result.Args) != 1 || result.Args[0] != "groups" {
-		t.Errorf("expected args ['groups'], got %v", result.Args)
-	}
-}
-
-func TestParseUnifiedInput_CommandCaseInsensitive(t *testing.T) {
-	result := ParseUnifiedInput("/VIEW GROUPS")
-	if result.Type != InputTypeCommand {
-		t.Errorf("expected InputTypeCommand, got %v", result.Type)
-	}
-	if result.Query != "view" {
-		t.Errorf("expected lowercase 'view', got %q", result.Query)
-	}
-	if len(result.Args) != 1 || result.Args[0] != "GROUPS" {
-		t.Errorf("expected args ['GROUPS'] (preserve case), got %v", result.Args)
-	}
-}
-
-func TestParseUnifiedInput_SearchWithSpaces(t *testing.T) {
-	result := ParseUnifiedInput("192.0.2.50")
-	if result.Type != InputTypeSearch {
-		t.Errorf("expected InputTypeSearch, got %v", result.Type)
-	}
-	if result.Query != "192.0.2.50" {
-		t.Errorf("expected query '192.0.2.50', got %q", result.Query)
-	}
-}
-
-func TestParseUnifiedInput_WhitespaceHandling(t *testing.T) {
-	result := ParseUnifiedInput("   search term   ")
-	if result.Type != InputTypeSearch {
-		t.Errorf("expected InputTypeSearch, got %v", result.Type)
-	}
-	if result.Query != "search term" {
-		t.Errorf("expected query 'search term', got %q", result.Query)
-	}
-}
-
-func TestParseUnifiedInput_CommandWithMultipleArgs(t *testing.T) {
-	result := ParseUnifiedInput("/view group MyGroup blocklists")
-	if result.Type != InputTypeCommand {
-		t.Errorf("expected InputTypeCommand, got %v", result.Type)
-	}
-	if result.Query != "view" {
-		t.Errorf("expected query 'view', got %q", result.Query)
-	}
-	if len(result.Args) != 3 || result.Args[0] != "group" || result.Args[1] != "MyGroup" || result.Args[2] != "blocklists" {
-		t.Errorf("expected args ['group', 'MyGroup', 'blocklists'], got %v", result.Args)
-	}
-}
-
-func TestParseUnifiedInput_JustSlash(t *testing.T) {
-	result := ParseUnifiedInput("/")
-	if result.Type != InputTypeCommand {
-		t.Errorf("expected InputTypeCommand, got %v", result.Type)
-	}
-	if result.Query != "" {
-		t.Errorf("expected empty query for bare slash, got %q", result.Query)
-	}
-}
-
-func TestParseUnifiedInput_SearchWithLeadingZero(t *testing.T) {
-	result := ParseUnifiedInput("192.168.001.1")
-	if result.Type != InputTypeSearch {
-		t.Errorf("expected InputTypeSearch for IP-like search, got %v", result.Type)
-	}
-	if result.Query != "192.168.001.1" {
-		t.Errorf("expected query '192.168.001.1', got %q", result.Query)
+			if result.Type != tt.expectedType {
+				t.Errorf("expected type %v, got %v", tt.expectedType, result.Type)
+			}
+			if result.Query != tt.expectedQuery {
+				t.Errorf("expected query '%s', got '%s'", tt.expectedQuery, result.Query)
+			}
+			if len(result.Args) != len(tt.expectedArgs) {
+				t.Errorf("expected %d args, got %d", len(tt.expectedArgs), len(result.Args))
+			}
+			for i, arg := range tt.expectedArgs {
+				if result.Args[i] != arg {
+					t.Errorf("arg[%d]: expected '%s', got '%s'", i, arg, result.Args[i])
+				}
+			}
+		})
 	}
 }
 
 // Phase 3 Integration Tests - Unified Input Routing
 
 func TestUnifiedInput_ImplicitSearchRouting(t *testing.T) {
-	cfg := &config.Config{
-		NetworkGroupMap: map[string]string{
-			"192.168.1.100": "Servers",
+	cfg := testConfigWithIPs(map[string]string{
+		"192.168.1.100": "Servers",
 			"192.168.1.150": "IoT",
 			"10.0.0.5":      "Laptops",
-		},
-	}
+		
+	})
 
 	m := New(cfg)
 	m.ready = true
@@ -1393,11 +1446,10 @@ func TestUnifiedInput_ExplicitCommandRouting(t *testing.T) {
 }
 
 func TestUnifiedInput_SearchClearsInput(t *testing.T) {
-	cfg := &config.Config{
-		NetworkGroupMap: map[string]string{
-			"192.168.1.100": "Servers",
-		},
-	}
+	cfg := testConfigWithIPs(map[string]string{
+		"192.168.1.100": "Servers",
+		
+	})
 
 	m := New(cfg)
 	m.ready = true
@@ -1426,11 +1478,10 @@ func TestUnifiedInput_SearchClearsInput(t *testing.T) {
 }
 
 func TestUnifiedInput_CommandInHistory(t *testing.T) {
-	cfg := &config.Config{
-		NetworkGroupMap: map[string]string{
-			"192.168.1.100": "Servers",
-		},
-	}
+	cfg := testConfigWithIPs(map[string]string{
+		"192.168.1.100": "Servers",
+		
+	})
 
 	m := New(cfg)
 	m.ready = true
@@ -1461,11 +1512,10 @@ func TestUnifiedInput_CommandInHistory(t *testing.T) {
 }
 
 func TestUnifiedInput_PlaceholderText(t *testing.T) {
-	cfg := &config.Config{
-		NetworkGroupMap: map[string]string{
-			"192.168.1.100": "Servers",
-		},
-	}
+	cfg := testConfigWithIPs(map[string]string{
+		"192.168.1.100": "Servers",
+		
+	})
 
 	m := New(cfg)
 
@@ -1529,11 +1579,10 @@ func TestUnifiedInput_MultipleSequentialCommands(t *testing.T) {
 
 // Test unknown command
 func TestTUI_ExecuteCommand_UnknownCommand(t *testing.T) {
-	cfg := &config.Config{
-		NetworkGroupMap: map[string]string{
-			"192.168.1.100": "Servers",
-		},
-	}
+	cfg := testConfigWithIPs(map[string]string{
+		"192.168.1.100": "Servers",
+		
+	})
 
 	m := New(cfg)
 	m.ready = true
@@ -1556,11 +1605,10 @@ func TestTUI_ExecuteCommand_UnknownCommand(t *testing.T) {
 
 // Test view group with missing group name
 func TestTUI_ExecuteCommand_ViewGroupMissingName(t *testing.T) {
-	cfg := &config.Config{
-		NetworkGroupMap: map[string]string{
-			"192.168.1.100": "Servers",
-		},
-	}
+	cfg := testConfigWithIPs(map[string]string{
+		"192.168.1.100": "Servers",
+		
+	})
 
 	m := New(cfg)
 	m.ready = true
@@ -1587,11 +1635,10 @@ func TestTUI_ExecuteCommand_ViewGroupMissingName(t *testing.T) {
 
 // Test view with unknown subcommand
 func TestTUI_ExecuteCommand_ViewUnknownSubcommand(t *testing.T) {
-	cfg := &config.Config{
-		NetworkGroupMap: map[string]string{
-			"192.168.1.100": "Servers",
-		},
-	}
+	cfg := testConfigWithIPs(map[string]string{
+		"192.168.1.100": "Servers",
+		
+	})
 
 	m := New(cfg)
 	m.ready = true
@@ -1614,12 +1661,11 @@ func TestTUI_ExecuteCommand_ViewUnknownSubcommand(t *testing.T) {
 
 // Test search with empty query
 func TestTUI_FilterClients_EmptyQuery(t *testing.T) {
-	cfg := &config.Config{
-		NetworkGroupMap: map[string]string{
-			"192.168.1.100": "Servers",
+	cfg := testConfigWithIPs(map[string]string{
+		"192.168.1.100": "Servers",
 			"192.168.1.150": "IoT",
-		},
-	}
+		
+	})
 
 	m := New(cfg)
 	m.ready = true
@@ -1636,11 +1682,10 @@ func TestTUI_FilterClients_EmptyQuery(t *testing.T) {
 
 // Test Tab completion outside typeahead mode
 func TestTUI_TabCompletion_OutsideTypeaheadModeExisting(t *testing.T) {
-	cfg := &config.Config{
-		NetworkGroupMap: map[string]string{
-			"192.168.1.100": "Servers",
-		},
-	}
+	cfg := testConfigWithIPs(map[string]string{
+		"192.168.1.100": "Servers",
+		
+	})
 
 	m := New(cfg)
 	m.ready = true
@@ -1666,11 +1711,10 @@ func TestTUI_TabCompletion_OutsideTypeaheadModeExisting(t *testing.T) {
 // FIX #4: First-Run Banner Tests
 
 func TestTUI_FirstRunBanner(t *testing.T) {
-	cfg := &config.Config{
-		NetworkGroupMap: map[string]string{
-			"192.168.1.100": "Servers",
-		},
-	}
+	cfg := testConfigWithIPs(map[string]string{
+		"192.168.1.100": "Servers",
+		
+	})
 
 	m := New(cfg)
 	m.ready = true
@@ -1689,11 +1733,10 @@ func TestTUI_FirstRunBanner(t *testing.T) {
 }
 
 func TestTUI_FirstRunBannerDismissesOnKeypress(t *testing.T) {
-	cfg := &config.Config{
-		NetworkGroupMap: map[string]string{
-			"192.168.1.100": "Servers",
-		},
-	}
+	cfg := testConfigWithIPs(map[string]string{
+		"192.168.1.100": "Servers",
+		
+	})
 
 	m := New(cfg)
 	m.ready = true
@@ -1739,11 +1782,10 @@ func TestContentType_String(t *testing.T) {
 }
 
 func TestContentType_InitialValue(t *testing.T) {
-	cfg := &config.Config{
-		NetworkGroupMap: map[string]string{
-			"192.168.1.100": "Servers",
-		},
-	}
+	cfg := testConfigWithIPs(map[string]string{
+		"192.168.1.100": "Servers",
+		
+	})
 
 	m := New(cfg)
 
@@ -2286,15 +2328,14 @@ func TestTUI_SearchTypeahead_ModeIntegration(t *testing.T) {
 
 func TestTUI_Integration_SearchThenViewCommand(t *testing.T) {
 	// Test workflow: Search for IP → /view command → back to search
-	cfg := &config.Config{
-		NetworkGroupMap: map[string]string{
-			"192.0.2.50":  "prod-servers",
+	cfg := testConfigWithIPs(map[string]string{
+		"192.0.2.50":  "prod-servers",
 			"192.0.2.51":  "prod-servers",
 			"10.0.0.5":    "dev-machines",
 			"10.0.0.10":   "dev-machines",
 			"172.16.0.1":  "iot-devices",
-		},
-	}
+		
+	})
 	m := New(cfg)
 
 	// Step 1: Search for IP
@@ -2340,13 +2381,12 @@ func TestTUI_Integration_SearchThenViewCommand(t *testing.T) {
 
 func TestTUI_Integration_RapidTabCompletions(t *testing.T) {
 	// Test rapid Tab completions switching between command and search modes
-	cfg := &config.Config{
-		NetworkGroupMap: map[string]string{
-			"192.168.1.100": "servers",
+	cfg := testConfigWithIPs(map[string]string{
+		"192.168.1.100": "servers",
 			"192.168.1.150": "iot",
 			"10.0.0.5":      "laptops",
-		},
-	}
+		
+	})
 	m := New(cfg)
 
 	// First Tab completion in command mode
@@ -2381,12 +2421,11 @@ func TestTUI_Integration_RapidTabCompletions(t *testing.T) {
 
 func TestTUI_Integration_HistoryAcrossModes(t *testing.T) {
 	// Test that history tracks both searches and commands in order
-	cfg := &config.Config{
-		NetworkGroupMap: map[string]string{
-			"192.168.1.100": "servers",
+	cfg := testConfigWithIPs(map[string]string{
+		"192.168.1.100": "servers",
 			"192.168.1.150": "iot",
-		},
-	}
+		
+	})
 	m := New(cfg)
 
 	// Perform search
@@ -2422,11 +2461,10 @@ func TestTUI_Integration_HistoryAcrossModes(t *testing.T) {
 
 func TestTUI_StressTest_RapidKeystrokes(t *testing.T) {
 	// Simulate rapid typing of IP address
-	cfg := &config.Config{
-		NetworkGroupMap: map[string]string{
-			"192.0.2.50": "servers",
-		},
-	}
+	cfg := testConfigWithIPs(map[string]string{
+		"192.0.2.50": "servers",
+		
+	})
 	m := New(cfg)
 
 	// Simulate rapid typing
@@ -2488,5 +2526,77 @@ func TestTUI_StressTest_LargeDatasetNavigation(t *testing.T) {
 	// Should not crash or deadlock
 	if m.searchMatchIndex < 0 || m.searchMatchIndex >= len(m.searchMatches) {
 		t.Errorf("index out of bounds after navigation: %d", m.searchMatchIndex)
+	}
+}
+
+// ============================================================================
+// BENCHMARKS (for performance regression testing)
+// ============================================================================
+
+func BenchmarkFilterClients_SmallDataset(b *testing.B) {
+	m := New(testConfigWithIPs(map[string]string{
+		"192.0.2.1":   "servers",
+		"192.0.2.2":   "iot",
+		"192.0.2.3":   "security",
+		"192.0.2.4":   "servers",
+		"192.0.2.5":   "iot",
+	}))
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		m.unifiedInput.SetValue("192")
+		m.filterClients()
+	}
+}
+
+func BenchmarkFilterClients_LargeDataset(b *testing.B) {
+	ips := make(map[string]string)
+	for i := 0; i < 500; i++ {
+		ips[fmt.Sprintf("192.0.2.%d", i%256)] = "servers"
+	}
+	m := New(testConfigWithIPs(ips))
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		m.unifiedInput.SetValue("192")
+		m.filterClients()
+	}
+}
+
+func BenchmarkGetSearchMatches_SmallDataset(b *testing.B) {
+	m := New(mockConfig())
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		m.getSearchMatches("192")
+	}
+}
+
+func BenchmarkGetSearchMatches_LargeDataset(b *testing.B) {
+	ips := make(map[string]string)
+	for i := 0; i < 500; i++ {
+		ips[fmt.Sprintf("192.0.2.%d", i%256)] = "servers"
+	}
+	m := New(testConfigWithIPs(ips))
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		m.getSearchMatches("192")
+	}
+}
+
+func BenchmarkParseUnifiedInput(b *testing.B) {
+	inputs := []string{
+		"192.0.2.50",
+		"/view groups",
+		"servers",
+		"/help",
+	}
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		for _, input := range inputs {
+			ParseUnifiedInput(input)
+		}
 	}
 }
