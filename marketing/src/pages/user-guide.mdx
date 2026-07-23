@@ -87,6 +87,44 @@ The interface is built with Bubbletea (Go TUI framework) and uses responsive siz
 
 ---
 
+## When to Use: Interactive Mode (TUI) vs. Command Line
+
+Pharos Advanced Blocking offers two ways to manage your DNS configuration. Choose the right tool for your task:
+
+### Interactive Mode (TUI) — Use When...
+
+- **Exploring your configuration**: Browse all clients, groups, and current assignments
+- **Debugging DNS issues**: Search for a specific client IP, see what group it's assigned to, check blocklists
+- **Making one-off changes**: Quickly view a group's settings or search results
+- **Learning the system**: New to Pharos? The TUI guides you interactively with real-time search and `/help` commands
+
+**Launch with**: `pab` (no arguments)
+
+### Command Line (CLI) — Use When...
+
+- **Automating bulk operations**: Map 100 client IPs at once with `pab map` commands
+- **Setting up CI/CD pipelines**: Deploy changes automatically on schedule or triggered by events
+- **Integrating with other tools**: Call `pab map`, `pab unmap`, or `pab deploy` from your scripts
+- **Production deployments**: Use `pab deploy --dry-run` to preview changes before applying with `-f`
+- **Non-interactive environments**: Running in containers or cron jobs where a terminal isn't available
+
+**Commands**: `pab map`, `pab unmap`, `pab deploy`, `pab --help`
+
+### Summary
+
+| Task | Use TUI | Use CLI |
+|------|---------|---------|
+| Explore configuration | ✓ | |
+| Debug a specific client | ✓ | |
+| Assign one client | Either | |
+| Bulk-assign 100+ clients | | ✓ |
+| Deploy to production | | ✓ (with --dry-run) |
+| Automate with CI/CD | | ✓ |
+
+**First-time users**: Start with the TUI (`pab`) to get familiar with your groups and clients. Once you understand your setup, you're ready for CLI commands and automation.
+
+---
+
 ## Installation & Credentials
 
 ### Install pab
