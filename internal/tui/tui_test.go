@@ -985,6 +985,13 @@ func TestTUI_HistoryScroll_UpDown(t *testing.T) {
 	}
 	m.Update(tea.KeyMsg{Type: tea.KeyEnter})
 
+	// History scrolling (historyScroll) is only active when the history view is what
+	// View() actually renders -- i.e. in Table/Empty mode. Primary content types like
+	// Help/ViewGroup are rendered via renderContent() and scroll scrollOffset instead
+	// (see TestTUI_ViewGroupScroll_UpDown). Put the model in table mode so ↑↓ drive the
+	// history view.
+	m.contentType = ContentTypeTable
+
 	// Verify initial historyScroll is 0
 	if m.historyScroll != 0 {
 		t.Errorf("Expected historyScroll to be 0 initially, got %d", m.historyScroll)
@@ -1007,6 +1014,77 @@ func TestTUI_HistoryScroll_UpDown(t *testing.T) {
 	}
 }
 
+// TestTUI_ViewGroupScroll_UpDown is a regression test for the reported bug where
+// `/view group <name>` output was truncated and ↑↓ would not scroll it.
+//
+// Root cause: executing /view appends to commandHistory, and the scroll handler
+// routed ↑↓ to historyScroll whenever history was non-empty. But the group detail is
+// rendered via renderContent() which uses scrollOffset -- so the keys moved a counter
+// that had no effect on the visible group detail. This test locks in that ↑↓ move
+// scrollOffset (and NOT historyScroll) while ContentTypeViewGroup is displayed, even
+// with command history present.
+func TestTUI_ViewGroupScroll_UpDown(t *testing.T) {
+	// Build a group with enough blocked domains to overflow the viewport.
+	var blocked []string
+	for i := 0; i < 60; i++ {
+		blocked = append(blocked, fmt.Sprintf("blocked-domain-%02d.example.com", i))
+	}
+	cfg := &config.Config{
+		NetworkGroupMap: map[string]string{"192.168.1.10": "default+neve+roosevelt_laptop"},
+		Groups: []config.Group{
+			{Name: "default+neve+roosevelt_laptop", Blocked: blocked},
+		},
+	}
+
+	m := New(cfg)
+	m.ready = true
+	m.width = 80
+	m.height = 24
+
+	// Execute: /view group default+neve+roosevelt_laptop
+	for _, r := range "/view group default+neve+roosevelt_laptop" {
+		m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{r}})
+	}
+	m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+
+	// Preconditions: the group detail is the active content, and the /view command was
+	// recorded in history (this non-empty history is what used to hijack the keys).
+	if m.contentType != ContentTypeViewGroup {
+		t.Fatalf("Expected contentType ContentTypeViewGroup, got %v", m.contentType)
+	}
+	if len(m.commandHistory) == 0 {
+		t.Fatalf("Expected command history to be non-empty after /view")
+	}
+	if m.scrollOffset != 0 {
+		t.Fatalf("Expected scrollOffset to start at 0, got %d", m.scrollOffset)
+	}
+
+	// Capture the first visible line before scrolling.
+	firstLineBefore := strings.SplitN(m.renderContent(m.height-4), "\n", 2)[0]
+
+	// Press down: scrollOffset must advance, historyScroll must stay put.
+	m.Update(tea.KeyMsg{Type: tea.KeyDown})
+	m.Update(tea.KeyMsg{Type: tea.KeyDown})
+	if m.scrollOffset != 2 {
+		t.Errorf("Expected scrollOffset to be 2 after two down arrows, got %d", m.scrollOffset)
+	}
+	if m.historyScroll != 0 {
+		t.Errorf("Expected historyScroll to remain 0 for group detail scroll, got %d", m.historyScroll)
+	}
+
+	// The visible content must actually change (top line scrolled off).
+	firstLineAfter := strings.SplitN(m.renderContent(m.height-4), "\n", 2)[0]
+	if firstLineBefore == firstLineAfter {
+		t.Errorf("Expected group detail to scroll (first visible line to change); still %q", firstLineAfter)
+	}
+
+	// Press up: scrollOffset must decrease back toward the top.
+	m.Update(tea.KeyMsg{Type: tea.KeyUp})
+	if m.scrollOffset != 1 {
+		t.Errorf("Expected scrollOffset to be 1 after up arrow, got %d", m.scrollOffset)
+	}
+}
+
 func TestTUI_HistoryScroll_Bounds(t *testing.T) {
 	cfg := testConfigWithIPs(map[string]string{
 		"192.168.1.100": "Servers",
@@ -1024,6 +1102,9 @@ func TestTUI_HistoryScroll_Bounds(t *testing.T) {
 		m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{r}})
 	}
 	m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+
+	// Table mode so ↑↓ drive the history view (see TestTUI_HistoryScroll_UpDown).
+	m.contentType = ContentTypeTable
 
 	// Try to scroll up from the top (should not go below 0)
 	m.Update(tea.KeyMsg{Type: tea.KeyUp})
@@ -1133,17 +1214,21 @@ func TestTUI_HistoryRender_EmptyHistory(t *testing.T) {
 	m.width = 80
 	m.height = 24
 
-	// Verify first-run banner is shown (since firstRun=true and input is empty)
+	// The welcome banner was deliberately removed for v0.3.0 GA (see the "DISABLED"
+	// note in View()); the empty state now shows the search hint directly.
 	viewOutput := m.View()
-	if !strings.Contains(viewOutput, "Welcome to Pharos Advanced Blocking") {
-		t.Errorf("Expected first-run banner in view output")
+	if strings.Contains(viewOutput, "Welcome to Pharos Advanced Blocking") {
+		t.Errorf("Welcome banner was removed for v0.3.0 GA but is still rendered")
+	}
+	if !strings.Contains(viewOutput, "Start typing to search") {
+		t.Errorf("Expected empty state hint in view output")
 	}
 
-	// Dismiss banner by setting firstRun=false
+	// Same after explicitly clearing firstRun.
 	m.firstRun = false
 	viewOutput = m.View()
 	if !strings.Contains(viewOutput, "Start typing to search") {
-		t.Errorf("Expected empty state hint in view output after banner is dismissed")
+		t.Errorf("Expected empty state hint in view output after firstRun cleared")
 	}
 }
 
@@ -1173,15 +1258,18 @@ func TestTUI_HistoryRender_AfterCommand(t *testing.T) {
 	}
 	m.Update(tea.KeyMsg{Type: tea.KeyEnter})
 
-	// Verify view now shows history
-	viewOutput := m.View()
-	if !strings.Contains(viewOutput, "/view groups") {
-		t.Errorf("Expected /view groups command in history view")
+	// After /view groups, contentType is ViewGroups, so View() renders the groups list
+	// as primary content (this is the fix for the reported "no groups list" bug). The
+	// command itself is recorded in history state, but the group-list pane -- not a raw
+	// command echo -- is what is shown.
+	if len(m.commandHistory) == 0 || m.commandHistory[0].Command != "/view groups" {
+		t.Errorf("Expected /view groups recorded in command history state")
 	}
 
-	// Should contain "Servers" from the group list
+	// The rendered view must contain the actual group list.
+	viewOutput := m.View()
 	if !strings.Contains(viewOutput, "Servers") {
-		t.Errorf("Expected 'Servers' group in history view")
+		t.Errorf("Expected 'Servers' group to render in View()")
 	}
 }
 
@@ -1202,6 +1290,9 @@ func TestTUI_HistoryScroll_ResetOnNewCommand(t *testing.T) {
 		m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{r}})
 	}
 	m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+
+	// Table mode so ↑↓ drive the history view (see TestTUI_HistoryScroll_UpDown).
+	m.contentType = ContentTypeTable
 
 	// Scroll down in history
 	m.Update(tea.KeyMsg{Type: tea.KeyDown})
@@ -1246,6 +1337,12 @@ func TestTUI_HistoryFooterDisplay(t *testing.T) {
 		m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{r}})
 	}
 	m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+
+	// The history count/hint is shown in the footer only when the history view is the
+	// primary content -- i.e. Table/Empty mode. Primary content types (Help/ViewGroup)
+	// show a plain "↑↓: scroll" hint for their own content instead. Put the model in
+	// table mode to exercise the history footer.
+	m.contentType = ContentTypeTable
 
 	// Verify footer shows history count and scroll hint
 	viewOutput = m.View()
@@ -1714,12 +1811,18 @@ func TestTUI_FirstRunBanner(t *testing.T) {
 	m.firstRun = true
 	m.unifiedInput.SetValue("")
 
+	// The welcome banner was deliberately removed for v0.3.0 GA (see the "DISABLED"
+	// note in View()). Even with firstRun=true it must NOT render; the empty state
+	// shows the normal search hint instead.
 	view := m.View()
-	if !strings.Contains(view, "Welcome to Pharos Advanced Blocking") {
-		t.Errorf("expected welcome banner in view when firstRun=true, got:\n%s", view)
+	if strings.Contains(view, "Welcome to Pharos Advanced Blocking") {
+		t.Errorf("Welcome banner was removed for v0.3.0 GA but rendered with firstRun=true:\n%s", view)
 	}
-	if !strings.Contains(view, "Quick start") {
-		t.Errorf("expected quick start help text in banner")
+	if strings.Contains(view, "Quick start") {
+		t.Errorf("Quick start banner text was removed but is still rendered")
+	}
+	if !strings.Contains(view, "Start typing to search") {
+		t.Errorf("expected empty-state search hint in view")
 	}
 }
 
@@ -2849,9 +2952,8 @@ func TestE2E_TypeaheadViewGroups(t *testing.T) {
 	if !strings.Contains(viewOutput, "IoT") {
 		t.Errorf("Verification failed: expected 'IoT' to render in View()")
 	}
-	if !strings.Contains(viewOutput, "/view groups") {
-		t.Errorf("Verification failed: expected '/view groups' in View() history")
-	}
+	// The groups-list pane is shown (not a raw command echo); the command is recorded
+	// in history state, verified above via m.commandHistory[0].Command.
 
 	// FIX #3: Visual regression tests for input duplication
 	// Verify welcome banner is dismissed
@@ -2947,10 +3049,8 @@ func TestE2E_DirectViewCommand(t *testing.T) {
 	if !strings.Contains(viewOutput, "IoT") {
 		t.Errorf("Verification failed: expected 'IoT' in View()")
 	}
-	// Verify history shows the command
-	if !strings.Contains(viewOutput, "/view groups") {
-		t.Errorf("Verification failed: expected '/view groups' in history view")
-	}
+	// The groups-list pane is shown (not a raw command echo); the command is recorded
+	// in history state, verified above via m.commandHistory[0].Command.
 
 	// FIX #3: Visual regression tests for input duplication
 	// Verify welcome banner is dismissed
@@ -3059,4 +3159,112 @@ func TestE2E_HelpCommandViaBubbleTeaUpdate(t *testing.T) {
 	if inputFieldCount != 1 {
 		t.Errorf("CRITICAL: Input field appears %d times (expected 1)", inputFieldCount)
 	}
+}
+
+// ============================================================================
+// RED-TEAM MUTATION TEST: Async Textinput Hypothesis Verification
+// ============================================================================
+
+// TestTUI_AsyncTextinputHypothesis verifies whether textinput.SetValue() has
+// async/deferred behavior by testing the exact state after /help execution
+func TestTUI_AsyncTextinputHypothesis(t *testing.T) {
+	cfg := mockConfig()
+	m := New(cfg)
+	m.ready = true
+	m.width = 80
+	m.height = 24
+
+	t.Log("=== RED-TEAM MUTATION TEST: Async Textinput Hypothesis ===")
+
+	// BASELINE: Initial state
+	t.Log("\n[BASELINE] Initial state")
+	t.Logf("  firstRun: %v (expected: true)\n", m.firstRun)
+	t.Logf("  inputValue: '%s' (expected: '')\n", m.unifiedInput.Value())
+	if m.firstRun {
+		t.Log("  PASS: firstRun is true at start")
+	} else {
+		t.Fatal("FAIL: firstRun should be true at start")
+	}
+	if m.unifiedInput.Value() == "" {
+		t.Log("  PASS: input is empty at start")
+	} else {
+		t.Fatalf("FAIL: input should be empty at start, got '%s'", m.unifiedInput.Value())
+	}
+
+	// STEP 1: Execute /help command
+	t.Log("\n[STEP 1] Execute /help command")
+	_, _ = m.executeCommand("help", []string{})
+
+	// CRITICAL INSPECTION: Check state immediately after executeCommand
+	t.Log("\n[CRITICAL INSPECTION] State after executeCommand")
+	firstRunAfterExec := m.firstRun
+	inputValueAfterExec := m.unifiedInput.Value()
+	t.Logf("  firstRun: %v (expected: false)\n", firstRunAfterExec)
+	t.Logf("  inputValue: '%s' (expected: '')\n", inputValueAfterExec)
+	t.Logf("  contentType: %v (expected: %v)\n", m.contentType, ContentTypeHelp)
+
+	// HYPOTHESIS TEST 1: Check if SetValue() actually cleared the input
+	if inputValueAfterExec == "" {
+		t.Log("  HYPOTHESIS CHECK 1: PASS - inputValue is empty (SetValue() worked synchronously)")
+	} else {
+		t.Logf("  HYPOTHESIS CHECK 1: FAIL - inputValue='%s' (textinput may be async!)", inputValueAfterExec)
+	}
+
+	// HYPOTHESIS TEST 2: Check if firstRun was set to false
+	if !firstRunAfterExec {
+		t.Log("  HYPOTHESIS CHECK 2: PASS - firstRun is false")
+	} else {
+		t.Fatal("  HYPOTHESIS CHECK 2: FAIL - firstRun should be false after executeCommand")
+	}
+
+	// STEP 2: Render View
+	t.Log("\n[STEP 2] Call View() to render")
+	viewOutput := m.View()
+
+	// CRITICAL CHECK: Verify welcome banner is NOT rendered
+	t.Log("\n[CRITICAL OUTCOME] After View() call")
+	bannerPresent := strings.Contains(viewOutput, "Welcome to Pharos Advanced Blocking")
+	helpTextPresent := strings.Contains(viewOutput, "Available Commands")
+
+	t.Logf("  Welcome banner in output: %v (expected: false)\n", bannerPresent)
+	t.Logf("  Help text in output: %v (expected: true)\n", helpTextPresent)
+
+	if bannerPresent {
+		t.Errorf("CRITICAL BUG: Welcome banner should NOT be rendered after /help command")
+		t.Logf("Welcome banner condition in View was TRUE when it should be FALSE")
+		t.Logf("This means: firstRun=%v AND inputValue='%s'", firstRunAfterExec, inputValueAfterExec)
+	} else {
+		t.Log("  PASS: Welcome banner correctly dismissed")
+	}
+
+	if !helpTextPresent {
+		t.Errorf("CRITICAL BUG: Help text should be rendered")
+	} else {
+		t.Log("  PASS: Help text correctly rendered")
+	}
+
+	// FINAL STATE VERIFICATION
+	t.Log("\n[FINAL STATE VERIFICATION]")
+	t.Logf("  firstRun: %v (expected: false)\n", m.firstRun)
+	t.Logf("  inputValue: '%s' (expected: '')\n", m.unifiedInput.Value())
+	t.Logf("  contentType: %v (expected: %v)\n", m.contentType, ContentTypeHelp)
+	t.Logf("  history length: %d (expected: 1)\n", len(m.commandHistory))
+
+	// Verify all conditions
+	if m.firstRun {
+		t.Fatal("CRITICAL: firstRun should be false after /help")
+	}
+	if m.unifiedInput.Value() != "" {
+		t.Fatalf("CRITICAL: input should be empty, got '%s'", m.unifiedInput.Value())
+	}
+	if m.contentType != ContentTypeHelp {
+		t.Fatalf("CRITICAL: contentType should be Help, got %v", m.contentType)
+	}
+	if len(m.commandHistory) != 1 {
+		t.Fatalf("CRITICAL: should have 1 history entry, got %d", len(m.commandHistory))
+	}
+
+	t.Log("\n=== HYPOTHESIS VERIFICATION COMPLETE ===")
+	t.Log("RESULT: Welcome banner correctly dismissed after /help command")
+	t.Log("CONCLUSION: No async textinput issue detected with current implementation")
 }

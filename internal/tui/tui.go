@@ -383,8 +383,17 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if !m.inTypeaheadMode && !m.inSearchTypeahead {
 			switch msg.Type {
 			case tea.KeyUp:
-				// Scroll up in history if we have history, otherwise in regular content
-				if len(m.commandHistory) > 0 {
+				// Scroll priority must mirror View()'s rendering priority: explicit
+				// content types (Help, ViewGroup, ViewGroups, etc.) render via
+				// renderContent() which uses scrollOffset, so up/down must move scrollOffset
+				// for them -- even when commandHistory is non-empty (executing /view
+				// appends to history, so it almost always is). Fall back to the history
+				// view (historyScroll) only in table/empty mode.
+				if m.contentType != ContentTypeEmpty && m.contentType != ContentTypeTable {
+					if m.scrollOffset > 0 {
+						m.scrollOffset--
+					}
+				} else if len(m.commandHistory) > 0 {
 					if m.historyScroll > 0 {
 						m.historyScroll--
 					}
@@ -393,8 +402,14 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 				return m, nil
 			case tea.KeyDown:
-				// Scroll down in history if we have history, otherwise in regular content
-				if len(m.commandHistory) > 0 {
+				// See KeyUp above: content types that render via renderContent() must
+				// scroll scrollOffset; the history view scrolls historyScroll.
+				if m.contentType != ContentTypeEmpty && m.contentType != ContentTypeTable {
+					// Conservative limit to prevent runaway offset
+					if m.scrollOffset < 100 {
+						m.scrollOffset++
+					}
+				} else if len(m.commandHistory) > 0 {
 					// Conservative limit to prevent overflow
 					if m.historyScroll < 100 {
 						m.historyScroll++
@@ -1187,8 +1202,13 @@ func (m *Model) View() string {
 	} else {
 		// Show default hints
 		footerText = "ctrl+c / esc: exit | /help: commands | /clear: reset"
-		// Add scroll hint if we have history
-		if len(m.commandHistory) > 0 {
+		// Scroll hint. When an explicit content type is displayed (Help, ViewGroup,
+		// ViewGroups, etc.) ↑↓ scroll that content (scrollOffset), matching the
+		// rendering/scroll priority in View() and Update(); otherwise ↑↓ scroll the
+		// command history.
+		if m.contentType != ContentTypeEmpty && m.contentType != ContentTypeTable {
+			footerText += " | ↑↓: scroll"
+		} else if len(m.commandHistory) > 0 {
 			footerText += " | ↑↓: scroll through history"
 			footerText += fmt.Sprintf(" | (%d commands in history)", len(m.commandHistory))
 		} else if m.contentType != ContentTypeEmpty {
