@@ -33,3 +33,70 @@ After installation, the `pab` command will be available in your path. Verify the
 ```bash
 pab --version
 ```
+
+---
+
+## Getting Started
+
+Now that you have Pharos Advanced Blocking installed, here's how to get up and running in just a few minutes.
+
+### Your First Command
+
+Start by exploring what `pab` can do:
+
+```bash
+pab --help
+```
+
+This shows you all available commands and options.
+
+### 5-Minute Interactive Walkthrough
+
+The fastest way to see `pab` in action is to open the interactive TUI:
+
+1. **Launch the TUI** — Open your terminal in the directory containing your Technitium `dnsApp.config` file and run:
+   ```bash
+   pab
+   ```
+
+2. **Explore with Slash Commands** — Once the TUI is open, type `/help` to see available commands, then try:
+   - `/view groups` — See all your blocking groups
+   - Search for an IP address to view its group mapping
+   - `/exit` to close the TUI
+
+3. **Next, Read the Full Guide** — Head over to the [User Guide](/user-guide) for detailed walkthroughs of the TUI, slash commands, and how to map client IPs to blocking groups.
+
+---
+
+## Common Next Steps
+
+Once you're comfortable with the basics, here's the natural progression to more advanced usage:
+
+### Setting Up Client Mapping
+
+Map client IPs to blocking groups using the command line:
+
+```bash
+pab map --ip 192.0.2.50 --group Kids
+```
+
+This assigns all DNS queries from `192.0.2.50` to the "Kids" blocking group. Learn more in the [User Guide](/user-guide#mapping--deploying).
+
+### Configuring Groups and Policies
+
+Work with your Technitium blocking groups to:
+- Add or modify blocklists
+- Create group-specific policies
+- View detailed group information
+
+Refer to the [CLI Reference](/cli-reference) for command syntax and examples.
+
+### Automating Deployments
+
+Once your configuration is working, consider automating client mapping or deployments through scripts or CI/CD pipelines. The `pab` command-line interface integrates easily into shell scripts and automation workflows.
+
+### Learn More
+
+- **Full User Guide:** [User Guide](/user-guide) — Interactive mode, slash commands, and practical workflows
+- **Command Reference:** [CLI Reference](/cli-reference) — All commands, flags, and examples
+- **Release Notes:** [Release Notes](/release-notes) — What's new and recent improvements
