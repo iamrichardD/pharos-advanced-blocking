@@ -247,6 +247,51 @@ Or combine them:
 
 ---
 
+## Advanced Workflows
+
+### Command History Navigation
+
+After executing commands, use ↑↓ arrow keys to scroll through command history. This is perfect for repeating common operations without retyping:
+
+```
+Execute: /view groups
+Press ↑: Returns to /view groups in input
+Press ↑: Returns to previous command
+```
+
+Useful for: Rapid multi-group inspection, repeated deployments, testing workflows.
+
+### Case-Insensitive Group Search
+
+Search is case-insensitive, so any of these find the "Kids" group:
+
+```
+Type: kids[Enter]
+Type: KIDS[Enter]
+Type: KiDs[Enter]
+```
+
+All three filter identically to the Kids group.
+
+### Multi-Node Deployment Pattern
+
+For active-active setups, deploy to all nodes with a single command:
+
+```bash
+pab deploy --dry-run          # Preview all changes
+pab deploy -f                 # Deploy to all configured nodes simultaneously
+```
+
+Or target a specific node:
+
+```bash
+pab deploy -f --node secondary
+```
+
+This pattern scales from 1 to N nodes without workflow changes.
+
+---
+
 ## Mapping & Deploying
 
 Once your configuration is ready, manage updates using the CLI commands:
