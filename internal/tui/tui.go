@@ -184,7 +184,7 @@ type Model struct {
 	inPostTabCompletion bool           // Prevent re-entering typeahead after Tab completion
 	groups              []config.Group // Groups from config
 	viewGroupName       string         // Current group being viewed
-	viewGroupKind       string         // "all", "blocklists", "allowed", "blocked"
+	viewGroupKind       string         // "all", "blocklists", "allowed"
 	scrollOffset        int            // Current scroll position in viewport
 	commandHistory      []CommandEvent // Append-only history log
 	historyScroll       int            // Scroll position in history view
@@ -636,7 +636,7 @@ func (m *Model) handleView(args []string) {
 		groupName := args[1]
 		kind := "all"
 		if len(args) > 2 {
-			kind = args[2] // "blocklists", "allowed", "blocked"
+			kind = args[2] // "blocklists", "allowed"
 		}
 		m.viewGroupName = groupName
 		m.viewGroupKind = kind
@@ -669,7 +669,7 @@ func (m *Model) handleViewWithOutput(args []string) string {
 		groupName := args[1]
 		kind := "all"
 		if len(args) > 2 {
-			kind = args[2] // "blocklists", "allowed", "blocked"
+			kind = args[2] // "blocklists", "allowed"
 		}
 		m.viewGroupName = groupName
 		m.viewGroupKind = kind
