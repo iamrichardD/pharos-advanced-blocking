@@ -1,0 +1,78 @@
+---
+layout: ../layouts/Layout.astro
+title: "Release Notes | Pharos Advanced Blocking"
+---
+
+# Release Notes
+
+## v0.4.0 — Stability & Rendering Overhaul
+
+**Release Date**: July 2026
+
+### Overview
+
+v0.4.0 fixes critical TUI rendering issues and improves discoverability. If you experienced rendering problems, layout issues, or command discovery challenges in v0.3.0, v0.4.0 resolves all of these.
+
+### Critical Fixes
+
+#### Fixed: TUI Rendering Overflow
+
+**Problem**: The TUI would render content taller than the terminal, pushing help text, group details, and command lists off-screen.
+
+**Solution**: Corrected height calculations in View() method. Content now renders at exactly terminal height.
+
+**Impact**: All interactive features now display correctly.
+
+#### Fixed: Scroll Functionality
+
+**Problem**: Pressing ↑↓ keys had no effect when viewing long group details.
+
+**Solution**: Wired scroll keys to correct viewport counters.
+
+**Impact**: Users can now scroll through 100+ domain lists in group details.
+
+#### Fixed: Tab Completion Regression
+
+**Problem**: `/view group <name>` commands didn't display in typeahead after Tab completion.
+
+**Solution**: Corrected command argument parsing for multi-word commands.
+
+**Impact**: All `/view` subcommands now work seamlessly with Tab completion.
+
+#### Fixed: Multi-Word Command Parsing
+
+**Problem**: Typing `/view group Default+Richard` would fail to parse correctly.
+
+**Solution**: Rewrote command routing to properly split command names from arguments.
+
+**Impact**: Complex group names with special characters now work correctly.
+
+### Quality Improvements
+
+- Added comprehensive rendering frame tests (render_frame_test.go)
+- Added regression tests for group detail scrolling
+- Improved search typeahead accuracy
+- Enhanced error messages for invalid group names
+
+### Known Limitations
+
+- Group name Tab autocomplete is coming in a future release (currently supports command name completion only)
+- Welcome banner feature disabled pending redesign
+
+### Upgrade Path
+
+**From v0.3.0**: Simply replace your binary and restart. No configuration changes needed. All v0.3.0 settings are compatible.
+
+**Recommended**: Upgrade immediately if experiencing TUI rendering issues, scrolling problems, or Tab completion failures.
+
+---
+
+## v0.3.0 — Interactive TUI & Tab Completion
+
+(Historical release)
+
+---
+
+## v0.2.0 — Search & Filtering
+
+(Historical release)
