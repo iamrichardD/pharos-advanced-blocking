@@ -49,6 +49,44 @@ Press `Ctrl+C` or type `/exit` to close the TUI.
 
 ---
 
+## TUI Interface Preview
+
+When you run `pab`, you'll see the interactive TUI welcome screen below. This is your command center for managing DNS blocking policies.
+
+```
+╭──────────────────────────────────────────────────────────────────╮
+│                                                                  │
+│   Pharos Advanced Blocking                                       │
+│                                                                  │
+│  Welcome to Pharos Advanced Blocking!                            │
+│  Quick start: Type to search by IP/Group, or /help for commands  │
+│                                                                  │
+│  Tip: Press / to see all available commands                      │
+│  Tip: Press Tab in search to autocomplete IPs or groups          │
+│                                                                  │
+│                                                                  │
+│   > Search or type /help for commands                            │
+│                                                                  │
+│  ctrl+c / esc: exit | /help: commands | /clear: reset            │
+│                                                                  │
+╰──────────────────────────────────────────────────────────────────╯
+```
+
+### Key Interface Elements
+
+- **Title Banner**: "Pharos Advanced Blocking" with blue-tinted styling
+- **Welcome Message**: Quick orientation and tips for first-time users
+- **Search Prompt** (`>`): Type IPs or group names to filter your network
+- **Footer Hints**: Keyboard shortcuts for navigation and common commands
+  - `ctrl+c` / `esc`: Exit the TUI
+  - `/help`: View all available commands
+  - `/clear`: Reset search filters
+  - `↑↓`: Scroll through command history in future releases
+
+The interface is built with Bubbletea (Go TUI framework) and uses responsive sizing to fit your terminal. All interactions are keyboard-driven for speed and efficiency.
+
+---
+
 ## Installation & Credentials
 
 ### Install pab
