@@ -21,6 +21,16 @@ pab
 
 If you're in a terminal (TTY), the interactive TUI dashboard opens immediately.
 
+**In non-TTY environments** (CI/CD pipelines, container orchestration, cron jobs):
+
+`pab` will exit with a helpful error message explaining that the TUI requires an interactive terminal. Use CLI commands instead:
+
+- `pab map --ip <ip> --group <group>` — Add or update a client IP mapping
+- `pab deploy --dry-run` — Preview changes before applying
+- `pab deploy -f` — Apply changes to your Technitium instances in CI/CD
+
+This is by design: the TUI is built for humans exploring interactively; CLI commands are designed for scripts, automation, and non-interactive environments. You get the full power of `pab` in either mode—just pick the right tool for your workflow.
+
 ### 2. Explore Your Configuration
 
 The TUI shows:
@@ -261,6 +271,36 @@ Press Tab again: Cycles to next IP match (e.g., 192.0.2.51)
 Press Enter:     Filters table to show that IP's details
 ```
 
+### Group Filtering with Tab Navigation
+
+Here's what happens step-by-step when you search for a group:
+
+```
+You:    Type 'kid' in search mode
+Result: TUI filters to groups containing "kid":
+        - Kids
+        - Device-Kids
+        - Streaming-Kids
+        (First match "Kids" is automatically highlighted)
+
+You:    Press Tab
+Result: Highlights cycle to the next match
+        Kids → Device-Kids (now highlighted)
+
+You:    Press Tab again
+Result: Highlights cycle to the next match
+        Device-Kids → Streaming-Kids (now highlighted)
+
+You:    Press Tab again
+Result: Wraps around to beginning
+        Streaming-Kids → Kids (now highlighted)
+
+You:    Press Enter on "Device-Kids"
+Result: Shows details for the Device-Kids group
+```
+
+**Key Point**: This is navigation through filtered results, not autocomplete. Typing `kid[Tab]` does NOT auto-fill to "Kids"—it filters the list and lets you navigate through matches with Tab, then press Enter to confirm your choice.
+
 ### What's NOT Available (Yet)
 
 - **Full IP autocomplete**: Typing `192.0[Tab]` will NOT auto-complete to a full IP like `192.0.2.50`—it filters and navigates through matches
@@ -273,9 +313,15 @@ Press Enter:     Filters table to show that IP's details
 2. **Partial matching**: Type `192` to filter to all IPs containing 192
 3. **Multiple matches**: If multiple items match, use Tab to cycle through them, then Enter to confirm
 
+### How This Differs from Tab Completion
+
+→ See **Tab Completion** below for IDE-style command name autocomplete (different from search navigation).
+
 ---
 
 ## Tab Completion (Command Names Only)
+
+*→ See **Search Typeahead** above for search mode Tab navigation (different from command autocomplete).*
 
 Press Tab to auto-complete slash command names. This is true IDE-style completion—the command name fills in completely with a trailing space, ready for arguments.
 
