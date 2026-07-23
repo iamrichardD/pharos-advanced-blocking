@@ -1151,60 +1151,10 @@ func (m *Model) View() string {
 		m.firstRun, inputValue, m.contentType, len(m.commandHistory), welcomeBannerCondition)
 	fmt.Fprint(os.Stderr, debugMsg)
 
-	// First-run welcome banner
-	if welcomeBannerCondition {
-		welcome := lipgloss.NewStyle().
-			Foreground(lipgloss.Color("14")).
-			Bold(true).
-			Render("Welcome to Pharos Advanced Blocking!")
-
-		subtitle := lipgloss.NewStyle().
-			Foreground(lipgloss.Color("8")).
-			Render("Quick start: Type to search by IP/Group, or /help for commands")
-
-		tabHint := lipgloss.NewStyle().
-			Foreground(lipgloss.Color("8")).
-			Render("Tip: Press Tab in search to autocomplete IPs or groups")
-
-		welcomeBox := lipgloss.JoinVertical(
-			lipgloss.Top,
-			welcome,
-			subtitle,
-			"",
-			"Tip: Press / to see all available commands",
-			tabHint,
-		)
-
-		searchBox := lipgloss.NewStyle().
-			Padding(0, 1).
-			MarginTop(1).
-			Render(m.unifiedInput.View())
-
-		footer := footerStyle.Render("ctrl+c / esc: exit | /help: commands | /clear: reset")
-
-		// Calculate spacer to push search and footer to bottom
-		// Estimate: title(1) + welcome(6) + search(1) + footer(1) + padding(2)
-		// Total used ~11 lines, so spacer = height - 11
-		spacerHeight := max(0, m.height-11)
-		spacer := ""
-		if spacerHeight > 1 {
-			spacer = lipgloss.NewStyle().Height(spacerHeight).Render("")
-		}
-
-		layout := lipgloss.JoinVertical(
-			lipgloss.Top,
-			title,
-			welcomeBox,
-			spacer,
-			searchBox,
-			footer,
-		)
-
-		if m.width > 0 && m.height > 0 {
-			return baseStyle.Width(m.width - 4).Height(m.height - 2).Render(layout)
-		}
-		return baseStyle.Render(layout)
-	}
+	// DISABLED: Welcome banner removed for v0.3.0 GA
+	// The banner state logic is correct (m.firstRun dismissed properly) but UI rendering
+	// still displays it despite correct internal state. Root cause TBD for v0.3.1.
+	// Disabling to unblock release - users can access help via /help command.
 
 	// Dismiss banner on first keystroke
 	if m.firstRun && m.unifiedInput.Value() != "" {
