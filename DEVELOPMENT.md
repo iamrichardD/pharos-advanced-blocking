@@ -82,3 +82,43 @@ podman run --rm --security-opt seccomp=unconfined -v "$(pwd):/workspace:z" -w /w
 # Compile the binary natively to host disk
 podman run --rm --security-opt seccomp=unconfined -v "$(pwd):/workspace:z" -w /workspace public.ecr.aws/docker/library/golang:1.22-bookworm go build -o pab cmd/pab/main.go
 ```
+
+---
+
+## 📝 Documentation & Versioning Standards
+
+### Marketing Site Sync Requirements
+
+The marketing site (`marketing/src/pages/`) must stay synchronized with actual TUI features:
+
+1. **Feature Claims**: All claims in user-guide.mdx, cli-reference.mdx must match implemented code
+   - Example: "Tab completion works for command names" — verify this in `internal/tui/tui.go` (lines 780-820)
+   - Example: "Search is case-insensitive" — verify in search logic before promoting feature
+
+2. **Removed Features**: If a feature is removed or postponed, update marketing immediately
+   - Example: `/view group <name> blocked` was removed — clean up references in marketing docs
+   - Mark postponed features as "Coming in future release" instead of claiming current support
+
+3. **Release Notes**: Create `release-notes.mdx` for every major release
+   - Document what changed, why it matters, known limitations
+   - Include upgrade path for users on previous versions
+   - Link to relevant GitHub issues or discussions for context
+
+### Version Tags & Release Workflow
+
+1. **Semantic Versioning**: Follow SemVer — v0.X.Y format
+   - Major: Breaking changes to CLI or config schema
+   - Minor: New features or significant bug fixes
+   - Patch: Small fixes without user-facing impact
+
+2. **Release Process**:
+   ```bash
+   git tag v0.X.Y                    # Create version tag
+   gh release create v0.X.Y          # Create GitHub release with notes
+   # (Marketing site updates published simultaneously)
+   ```
+
+3. **Commit Messages**: Use conventional commits to auto-generate changelog
+   - `fix: ...` → Patch version bump
+   - `feat: ...` → Minor version bump
+   - `BREAKING CHANGE:` in body → Major version bump
