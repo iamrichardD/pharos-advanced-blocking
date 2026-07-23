@@ -3,7 +3,6 @@ package tui
 import (
 	"cmp"
 	"fmt"
-	"os"
 	"slices"
 	"strings"
 	"time"
@@ -548,9 +547,8 @@ func (m *Model) executeCommand(cmd string, args []string) (tea.Model, tea.Cmd) {
 	case "exit", "quit":
 		return m, tea.Quit
 	case "help", "?":
-		// Show help text in content area
+		// Show help text in content area (don't add to history to prevent history display from overriding)
 		helpOutput := helpText()
-		m.appendHistory(input, helpOutput)
 		m.contentType = ContentTypeHelp
 		m.contentText = helpOutput
 		m.scrollOffset = 0
