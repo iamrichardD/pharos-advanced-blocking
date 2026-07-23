@@ -37,9 +37,9 @@ Type `/help` to see all available commands, or try:
 - `/clear` — Reset search and filters
 - `/exit` — Close the TUI
 
-### 4. Use Tab Completion
+### 4. Use Tab Completion for Command Names
 
-Type `/v[Tab]` — it auto-completes to `/view `. Tab completion works for **command names** (e.g., `/e[Tab]` → `/exit `), but group name autocomplete is coming in a future release.
+Type `/v[Tab]` — it auto-completes to `/view ` (with trailing space). Tab completion works for **command names only** (e.g., `/e[Tab]` → `/exit `). Group name autocomplete in search mode is coming in a future release—for now, Tab navigates through filtered results.
 
 ### 5. Exit
 
@@ -62,7 +62,7 @@ When you run `pab`, you'll see the interactive TUI welcome screen below. This is
 │  Quick start: Type to search by IP/Group, or /help for commands  │
 │                                                                  │
 │  Tip: Press / to see all available commands                      │
-│  Tip: Press Tab in search to autocomplete IPs or groups          │
+│  Tip: Press Tab in search to navigate through filtered results   │
 │                                                                  │
 │                                                                  │
 │   > Search or type /help for commands                            │
@@ -203,48 +203,49 @@ Do-Not-Block                     1
 
 ---
 
-## Search Typeahead (IP & Group Autocomplete)
+## Search Typeahead (IP & Group Filtering)
 
-While in search mode (before typing `/`), press Tab to trigger autocomplete for IPs or group names:
+While in search mode (before typing `/`), Pharos filters results in real-time as you type. Press Tab to navigate through filtered results.
 
-### How It Works
+### What Works
 
-**Single Match (Auto-Select):**
+- **IP Filtering**: Type `192.0` and results filter to show only IPs containing "192.0"
+- **Group Filtering**: Type `kid` and results filter to show only groups containing "kid" (case-insensitive)
+- **Tab Navigation**: Press Tab to cycle through matching IPs or groups
+- **Enter to Confirm**: Press Enter to apply the selected filter
 
-Type a partial IP or group name that matches exactly one result, then press Tab. The value auto-completes:
-
-```
-Type:  192.0[Tab]
-Shows: Autocompletes to first match
-```
-
-**Multi-Match (Navigate & Select):**
-
-Type a partial search that matches multiple IPs or groups, then press Tab. The TUI highlights the first match:
+### Example Workflow
 
 ```
-Type:  kids[Tab]
-Shows: [Kids-Group] [Kitchen-IoT] [Kiosk-Config]
-Use:   ↑↓ to navigate | Tab to cycle | Enter to filter
+Type:     192.0[Tab]
+Result:   Highlights first matching IP (e.g., 192.0.2.50)
+Press Tab again: Cycles to next IP match (e.g., 192.0.2.51)
+Press Enter:     Filters table to show that IP's details
 ```
+
+### What's NOT Available (Yet)
+
+- **Full IP autocomplete**: Typing `192.0[Tab]` will NOT auto-complete to a full IP like `192.0.2.50`—it filters and navigates through matches
+- **Full group name autocomplete**: Typing `kid[Tab]` will NOT auto-complete to "Kids"—it filters and navigates through matches
+- **Auto-completion of group names is planned for a future release**
 
 ### Power-User Tips
 
-1. **Case-insensitive**: Type `kids` to find `Kids` group
-2. **Partial matching**: Type `192` to see all IPs starting with 192
-3. **Speed**: Typeahead is faster than manual typing for long group names
+1. **Case-insensitive**: Type `kids` or `KIDS` to find the "Kids" group
+2. **Partial matching**: Type `192` to filter to all IPs containing 192
+3. **Multiple matches**: If multiple items match, use Tab to cycle through them, then Enter to confirm
 
 ---
 
-## Tab Completion
+## Tab Completion (Command Names Only)
 
-Tab completion is an IDE-style power-user feature that accelerates slash command entry.
+Press Tab to auto-complete slash command names. This is true IDE-style completion—the command name fills in completely with a trailing space, ready for arguments.
 
-### How It Works
+### What Works
 
-**Single Match (Auto-Complete):**
+**Single Command Match:**
 
-Type a partial command that matches exactly one slash command, then press Tab. The command auto-completes with a trailing space:
+Type a partial command that matches exactly one slash command, then press Tab. The command completes fully with a space:
 
 ```
 /e[Tab]  →  /exit 
@@ -252,36 +253,42 @@ Type a partial command that matches exactly one slash command, then press Tab. T
 /h[Tab]  →  /help 
 ```
 
-**Multi-Match (Highlight + Navigate):**
+**Multiple Command Matches:**
 
 Type a partial command that matches multiple commands, then press Tab. The TUI highlights the first match:
 
 ```
-/v[Tab]           →  Highlights "/view" (3 matching commands: /view, etc.)
-[Down][Down][Tab] →  Use arrow keys to navigate; Tab completes the highlighted command
+/v[Tab]                    →  Highlights "/view" (multiple matches)
+Press ↓ to select a match  →  Navigate to desired command
+Press Tab                  →  Completes highlighted command to "/view "
 ```
 
-**Subcommand Arguments (After Completion):**
+**Entering Arguments After Completion:**
 
-After Tab-completing to a command with arguments, type the subcommand immediately:
-
-```
-/v[Tab]  →  /view 
-groups[Enter]  →  Executes "/view groups"
-```
-
-Or combine them:
+After Tab-completing a command, start typing arguments immediately without pressing Tab again:
 
 ```
-/view groups[Enter]  →  Shows all groups
-/view group Ki[Enter]  →  Shows the Kids group details
+/v[Tab]
+groups
+[Enter]  →  Executes "/view groups"
 ```
+
+### What's NOT Available (Yet)
+
+- **Group name Tab completion in search**: Typing `kid[Tab]` will NOT auto-complete to "Kids"—it filters and navigates search results instead
+- **Subcommand Tab completion**: Typing `/view gr[Tab]` will NOT complete to "/view groups"—you must type "groups" manually
+- **These features are planned for a future release**
+
+### How It's Different From Search
+
+- **Command Tab completion**: TRUE autocomplete. `/v[Tab]` → `/view ` (fills in the space automatically)
+- **Search Tab**: Navigate through filtered results. `kid[Tab]` → Cycles through matching groups but does NOT complete the name
 
 ### Power-User Tips
 
-1. **Aliases work too:** `/v` and `/view` both work; Tab-complete either one.
-2. **Case-insensitive:** `/EXIT` and `/exit` are equivalent.
-3. **Subcommand autocomplete coming soon:** In future versions, subcommand names (like group names) will also tab-complete.
+1. **Aliases work too:** `/v` and `/view` both match; Tab-complete either one
+2. **Case-insensitive:** `/EXIT` and `/exit` are equivalent
+3. **After completion, you're in argument mode**: The space is already there—just start typing your arguments
 
 ---
 
