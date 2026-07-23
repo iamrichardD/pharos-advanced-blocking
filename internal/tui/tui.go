@@ -3,6 +3,7 @@ package tui
 import (
 	"cmp"
 	"fmt"
+	"os"
 	"slices"
 	"strings"
 	"time"
@@ -542,6 +543,9 @@ func (m *Model) executeCommand(cmd string, args []string) (tea.Model, tea.Cmd) {
 	// FIX #1: Dismiss welcome banner for ANY command execution
 	m.firstRun = false
 
+	// DEBUG: Log when executeCommand is called
+	fmt.Fprintf(os.Stderr, "DEBUG_EXEC: cmd='%s', args=%v, setting firstRun=false\n", cmd, args)
+
 	switch cmdLower {
 	case "exit", "quit":
 		return m, tea.Quit
@@ -552,10 +556,12 @@ func (m *Model) executeCommand(cmd string, args []string) (tea.Model, tea.Cmd) {
 		m.contentType = ContentTypeHelp
 		m.contentText = helpOutput
 		m.scrollOffset = 0
+		fmt.Fprintf(os.Stderr, "DEBUG_HELP: Clearing input, setting firstRun=false, contentType=Help\n")
 		m.unifiedInput.SetValue("")
 		m.inTypeaheadMode = false
 		m.inPostTabCompletion = false
 		m.firstRun = false // Dismiss first-run banner when a command is executed
+		fmt.Fprintf(os.Stderr, "DEBUG_HELP_AFTER: firstRun=%v, inputValue='%s'\n", m.firstRun, m.unifiedInput.Value())
 		return m, nil
 	case "clear", "c":
 		m.commandHistory = []CommandEvent{}
@@ -1138,8 +1144,15 @@ func (m *Model) View() string {
 	// Fixed title at top
 	title := titleStyle.Render("Pharos Advanced Blocking")
 
+	// DEBUG: Log the welcome banner condition state
+	inputValue := m.unifiedInput.Value()
+	welcomeBannerCondition := m.firstRun && inputValue == ""
+	debugMsg := fmt.Sprintf("DEBUG_VIEW: firstRun=%v, inputValue='%s', contentType=%v, historyLen=%d, condition=%v\n",
+		m.firstRun, inputValue, m.contentType, len(m.commandHistory), welcomeBannerCondition)
+	fmt.Fprint(os.Stderr, debugMsg)
+
 	// First-run welcome banner
-	if m.firstRun && m.unifiedInput.Value() == "" {
+	if welcomeBannerCondition {
 		welcome := lipgloss.NewStyle().
 			Foreground(lipgloss.Color("14")).
 			Bold(true).
