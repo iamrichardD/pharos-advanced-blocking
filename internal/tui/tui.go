@@ -473,8 +473,14 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					return m.executeCommand(cmd, args)
 				}
 				// Try to execute what was typed as-is
-				trimmed := strings.TrimPrefix(input, "/")
-				return m.executeCommand(trimmed, parsed.Args)
+				// Extract just the command name (first word), not the full input
+				parts := strings.Fields(strings.TrimPrefix(input, "/"))
+				if len(parts) == 0 {
+					return m, nil
+				}
+				cmd := parts[0]
+				args := parts[1:]
+				return m.executeCommand(cmd, args)
 			}
 
 		case InputTypeSearch:
@@ -547,10 +553,15 @@ func (m *Model) executeCommand(cmd string, args []string) (tea.Model, tea.Cmd) {
 	case "exit", "quit":
 		return m, tea.Quit
 	case "help", "?":
-		// Show help text in content area (don't add to history to prevent history display from overriding)
+		// Show help text in the content area. Setting contentType to ContentTypeHelp
+		// makes View() render this as primary content; the contentType routing takes
+		// priority over the history view, so appending to history here does NOT hide
+		// the help text (the earlier "remove help from history" patch was treating a
+		// symptom of the layout-height bug, not the cause).
 		helpOutput := helpText()
 		m.contentType = ContentTypeHelp
 		m.contentText = helpOutput
+		m.appendHistory(input, helpOutput)
 		m.scrollOffset = 0
 		m.unifiedInput.SetValue("")
 		m.inTypeaheadMode = false
@@ -984,13 +995,12 @@ func (m *Model) renderTable() string {
 }
 
 // renderHistory renders the full command history from oldest to newest
-func (m *Model) renderHistory() string {
+func (m *Model) renderHistory(contentHeight int) string {
 	if len(m.commandHistory) == 0 {
 		return "No command history yet. Type a command to get started.\n(Use / to see available commands)"
 	}
 
 	var output strings.Builder
-	contentHeight := m.height - 10 // Account for: title(2) + search(3) + footer(1) + border+padding(4)
 	if contentHeight < 3 {
 		contentHeight = 3
 	}
@@ -1072,8 +1082,7 @@ func (m *Model) renderSearchTypeaheadList() string {
 }
 
 // renderContent renders content based on the current content type
-func (m *Model) renderContent() string {
-	contentHeight := m.height - 10 // Account for: title(2) + search(3) + footer(1) + border+padding(4)
+func (m *Model) renderContent(contentHeight int) string {
 	if contentHeight < 3 {
 		contentHeight = 3
 	}
@@ -1149,34 +1158,11 @@ func (m *Model) View() string {
 		m.firstRun = false
 	}
 
-	// Dynamic content area in the middle
-	// Prioritize explicit content types (Help, ViewGroups, etc.) over history
-	var renderedContent string
-	if m.contentType != ContentTypeEmpty && m.contentType != ContentTypeTable {
-		// Help, ViewGroups, ViewGroup, etc. should be shown as primary content
-		renderedContent = m.renderContent()
-	} else if len(m.commandHistory) > 0 {
-		// Only show history if we're in table/empty mode
-		renderedContent = m.renderHistory()
-	} else {
-		renderedContent = m.renderContent()
-	}
-
-	// Calculate available height for content box to prevent overflow
-	// Account for: title(2 lines) + search box(2 lines) + footer(1 line) + margins/padding(2 lines)
-	availableHeight := m.height - 7
-	if m.inSearchTypeahead {
-		// Reserve additional space for typeahead list when active
-		availableHeight = m.height - 12
-	}
-	if availableHeight < 3 {
-		availableHeight = 3
-	}
-
-	contentBox := lipgloss.NewStyle().
-		Padding(0, 1).
-		MaxHeight(availableHeight).
-		Render(renderedContent)
+	// Build the fixed "chrome" (search box, footer, optional typeahead list) FIRST so
+	// we can measure their real heights and give the content area exactly the leftover
+	// space. The title is already rendered above. Sizing the content off measured
+	// chrome heights (instead of hard-coded magic numbers) keeps the total frame within
+	// the terminal even when the footer text wraps to a second line.
 
 	// Search box (fixed above footer)
 	searchBox := lipgloss.NewStyle().
@@ -1209,27 +1195,76 @@ func (m *Model) View() string {
 			footerText += " | ↑↓: scroll"
 		}
 	}
-	footer := footerStyle.Render(footerText)
+	// innerWidth is the text area width inside baseStyle: the frame reserves 2 columns
+	// for the border and baseStyle.Padding(1,2) reserves 2 more on each side, so the
+	// wrappable width is m.width-8. Constrain the footer to this width so the height we
+	// measure below matches what the outer baseStyle will actually render (the footer
+	// text wraps to a second line once history hints are appended). Without this the
+	// measured height is one short and the frame overflows by a line.
+	innerWidth := m.width - 8
+	if innerWidth < 1 {
+		innerWidth = 1
+	}
+	fStyle := footerStyle
+	if m.width > 0 {
+		fStyle = fStyle.Width(innerWidth)
+	}
+	footer := fStyle.Render(footerText)
 
-	// Calculate spacer to push search and footer to bottom
-	// Estimate: title(1) + content(varies) + search(2) + footer(1) + padding(2)
-	// Conservative calculation: height - (title + search + footer + padding)
-	spacerHeight := max(0, m.height-10)
-	if m.inSearchTypeahead && typeaheadView != "" {
-		// Reserve less space if typeahead is active
-		spacerHeight = max(0, m.height-15)
+	// Compute the content height from the ACTUAL rendered chrome heights.
+	//
+	// The whole layout is wrapped by baseStyle, which sets Height(m.height-2) and adds
+	// a RoundedBorder (+2 lines). Height() in lipgloss includes the style's own vertical
+	// padding, so the space available to the JoinVertical layout is:
+	//     (m.height - 2) - 2 (baseStyle vertical padding) == m.height - 4
+	// Content then gets whatever remains after title/search/footer/typeahead.
+	//
+	// Historically this was hard-coded as (m.height - 10) AND an equally large explicit
+	// spacer was appended, which double-counted the vertical space and produced a frame
+	// ~2x the terminal height. In the alt-screen renderer that pushed all real content
+	// (help text, group lists, command list) off the top of the screen -- the reported
+	// "no output / garbled output" bug. Measuring the chrome removes both the magic
+	// numbers and the redundant spacer.
+	contentHeight := 10
+	if m.height > 0 {
+		contentHeight = (m.height - 4) -
+			lipgloss.Height(title) -
+			lipgloss.Height(searchBox) -
+			lipgloss.Height(footer)
+		if typeaheadView != "" {
+			contentHeight -= lipgloss.Height(typeaheadView)
+		}
+	}
+	if contentHeight < 3 {
+		contentHeight = 3
 	}
 
-	spacer := ""
-	if spacerHeight > 1 {
-		spacer = lipgloss.NewStyle().Height(spacerHeight).Render("")
+	// Dynamic content area in the middle.
+	// Prioritize explicit content types (Help, ViewGroups, etc.) over history.
+	var renderedContent string
+	if m.contentType != ContentTypeEmpty && m.contentType != ContentTypeTable {
+		// Help, ViewGroups, ViewGroup, etc. should be shown as primary content
+		renderedContent = m.renderContent(contentHeight)
+	} else if len(m.commandHistory) > 0 {
+		// Only show history if we're in table/empty mode
+		renderedContent = m.renderHistory(contentHeight)
+	} else {
+		renderedContent = m.renderContent(contentHeight)
 	}
 
-	// Assemble the layout vertically: title, content, spacer, search, typeahead (if active), footer
+	// MaxWidth (ANSI-aware, truncates rather than wraps) guarantees no content line can
+	// wrap when the outer bordered style is applied, which would otherwise add unbudgeted
+	// rows and overflow the frame. MaxHeight caps the block to the reserved rows.
+	contentBox := lipgloss.NewStyle().
+		Padding(0, 1).
+		MaxHeight(contentHeight).
+		MaxWidth(innerWidth).
+		Render(renderedContent)
+
+	// Assemble the layout vertically: title, content, search, typeahead (if active), footer.
+	// renderContent()/renderHistory() already pad their output to exactly contentHeight,
+	// which pushes the search box and footer to the bottom -- no separate spacer needed.
 	layoutParts := []string{title, contentBox}
-	if spacer != "" {
-		layoutParts = append(layoutParts, spacer)
-	}
 	layoutParts = append(layoutParts, searchBox)
 	if typeaheadView != "" {
 		layoutParts = append(layoutParts, typeaheadView)
